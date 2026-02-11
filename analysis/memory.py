@@ -237,15 +237,17 @@ def _recall_events(ticker):
 def _recall_semantic(ticker, query):
     """Semantic search across a ticker's memories."""
     try:
-        response = _client.runtime.retrieve_memories(
+        response = _client.runtime.retrieve_memory_records(
             memoryId=_client.memory_id,
             namespace=f"/facts/sentiment/{ticker}/",
-            query=query,
-            maxResults=10,
+            searchCriteria={
+                "searchQuery": query,
+                "topK": 10,
+            },
         )
 
         facts = []
-        for record in response.get("memories", []):
+        for record in response.get("memoryRecords", []):
             content = record.get("content", {})
             text = content.get("text", "") if isinstance(content, dict) else str(content)
             if text:
