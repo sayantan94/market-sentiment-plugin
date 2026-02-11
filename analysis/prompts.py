@@ -1,4 +1,4 @@
-"""Sentiment analysis prompt template for Bedrock Claude"""
+"""Sentiment analysis prompt templates for Bedrock Claude"""
 
 
 SYSTEM_PROMPT = """You are a market sentiment analyst. Analyze the social media posts (text and screenshots) about {ticker} and determine the overall sentiment.
@@ -101,3 +101,78 @@ def build_multimodal_content(ticker, posts, screenshots):
             })
 
     return content
+
+
+def build_ticker_inference_prompt(posts):
+    """
+    Build a prompt that asks the LLM to identify which tickers
+    untagged posts are about (posts without explicit $TICKER mentions).
+    """
+    post_block = "\n\n".join(
+        f"[{i}] @{p['handle']} ({p.get('timestamp', '?')}):\n{p['text']}"
+        for i, p in enumerate(posts)
+    )
+
+    return f"""You are a financial text analyst. The following social media posts do NOT contain explicit $TICKER cashtag mentions, but many are about specific stocks, ETFs, or the broader market.
+
+For each post, identify which ticker(s) it most likely refers to. Only assign tickers when you are confident — do not guess.
+
+Common mappings:
+- "the market", "SPX", "S&P", "indices" → SPY
+- "tech", "nasdaq", "QQQ" → QQQ
+- Company names → their ticker (e.g. "Apple" → AAPL, "Tesla" → TSLA, "Nvidia" → NVDA)
+- Generic market commentary with no specific stock → MARKET (special tag for overall market sentiment)
+- Posts with no financial relevance (memes, personal, spam) → SKIP
+
+# POSTS
+{post_block}
+
+# OUTPUT FORMAT
+Return ONLY valid JSON. No text before or after.
+Array of objects, one per post (same order as input). Use the index from the post.
+
+[
+  {{"index": 0, "tickers": ["SPY"], "reason": "discusses S&P support levels"}},
+  {{"index": 1, "tickers": ["NVDA", "AMD"], "reason": "compares Nvidia and AMD earnings"}},
+  {{"index": 2, "tickers": [], "reason": "SKIP - personal post, not financial"}}
+]"""
+
+
+def build_market_sentiment_prompt(posts):
+    """
+    Build a prompt for overall market sentiment across ALL posts.
+    This captures the general mood regardless of specific tickers.
+    """
+    post_block = "\n\n".join(
+        f"@{p['handle']} ({p.get('timestamp', '?')}):\n{p['text']}"
+        for p in posts
+    )
+
+    return f"""You are a market sentiment analyst. Analyze ALL the following social media posts to determine the OVERALL market sentiment — the general mood of traders and investors right now.
+
+This is NOT about any single ticker. This is about the market as a whole: risk appetite, fear vs greed, sector rotation themes, and macro sentiment.
+
+# RULES
+1. Filter noise — focus on posts with real market opinions
+2. Weight credible accounts higher
+3. Look for: risk-on vs risk-off mood, sector themes, macro concerns, event catalysts
+4. Note the TIME RANGE of posts — sentiment at market open differs from close
+
+# POSTS
+{post_block}
+
+# OUTPUT FORMAT
+Return ONLY valid JSON. No text before or after.
+
+{{
+  "sentiment": "bullish or bearish or neutral or mixed",
+  "confidence": 65,
+  "themes": ["theme1", "theme2", "theme3"],
+  "notable_accounts": ["handle1", "handle2"],
+  "summary": "2-3 sentences on overall market mood, citing specific observations",
+  "risk_appetite": "risk-on or risk-off or neutral",
+  "sector_rotation": "any notable sector themes or empty string",
+  "macro_concerns": "any macro themes mentioned or empty string",
+  "noise_filtered": 3,
+  "signal_posts": 8
+}}"""

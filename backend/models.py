@@ -1,6 +1,7 @@
 """Pydantic models for Market Sentiment Plugin"""
 
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -12,7 +13,7 @@ class PostIn(BaseModel):
     timestamp: str = ""
     tickers: list[str] = Field(default_factory=list)
     url: str = ""
-    screenshot: str | None = None  # base64 PNG from tab capture
+    screenshot: Optional[str] = None  # base64 PNG from tab capture
 
 
 class Post(BaseModel):
@@ -23,5 +24,5 @@ class Post(BaseModel):
     timestamp: str = ""
     tickers: list[str] = Field(default_factory=list)
     url: str = ""
-    screenshot_file: str | None = None  # filename in data/screenshots/
+    screenshot_file: Optional[str] = None  # filename in data/screenshots/
     saved_at: str = Field(default_factory=lambda: datetime.now().isoformat())

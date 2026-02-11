@@ -1,236 +1,227 @@
 """
 Bedrock AgentCore Memory for Market Sentiment
-Ported from oi/memory.py — same patterns, different memory name/namespace.
-
-API notes (critical):
-- MemoryClient uses snake_case: memory_id, actor_id, session_id
-- Messages are tuples: [(content, "ASSISTANT")] NOT dicts
-- retrieve_memories() NOT retrieve_memory_records()
-- list_memories() returns list of dicts with 'id' key, NO 'name' field
-- create_memory_and_wait() returns result["id"] NOT result["memoryId"]
 """
 
 import time
 import logging
 import boto3
 from datetime import datetime
-from bedrock_agentcore.memory import MemoryClient
-from config.settings import AWS_REGION
+
+from config.settings import AWS_REGION, MEMORY_NAME, EVENT_EXPIRY_DAYS
 
 logger = logging.getLogger(__name__)
 
-MEMORY_NAME = "market_sentiment"
-EVENT_EXPIRY_DAYS = 30
 
-_memory_client = None
-_control_client = None
-_memory_id = None
+class MemoryClient:
+    def __init__(self):
+        self.control = boto3.client("bedrock-agentcore-control", region_name=AWS_REGION)
+        self.runtime = boto3.client("bedrock-agentcore", region_name=AWS_REGION)
+        self._memory_id = None
 
+    @property
+    def memory_id(self):
+        if self._memory_id is None:
+            self._memory_id = self._find_or_create_memory()
+        return self._memory_id
 
-def _get_memory_client():
-    """MemoryClient — snake_case params, handles events + retrieval"""
-    global _memory_client
-    if _memory_client is None:
-        _memory_client = MemoryClient(region_name=AWS_REGION)
-    return _memory_client
+    def _find_or_create_memory(self):
+        """Find existing memory or create new one"""
+        try:
+            response = self.control.list_memories()
+            for mem in response.get("memories", []):
+                if MEMORY_NAME in mem.get("arn", ""):
+                    memory_id = mem.get("id", "")
+                    logger.info(f"Found memory: {memory_id}")
+                    return memory_id
+        except Exception as e:
+            logger.warning(f"list_memories failed: {e}")
 
+        return self._create_memory()
 
-def _get_control_client():
-    """boto3 control plane — camelCase, for get_memory to resolve name->ID"""
-    global _control_client
-    if _control_client is None:
-        _control_client = boto3.client(
-            "bedrock-agentcore-control", region_name=AWS_REGION
-        )
-    return _control_client
-
-
-def _get_memory_id():
-    """
-    Get or cache the memory ID.
-
-    Strategy:
-    1. list_memories via MemoryClient (returns dicts with 'id' key, NO 'name')
-    2. For each, call get_memory via boto3 control plane to check the name
-    3. If not found, create a new memory store
-    4. If "already exists" error, retry listing
-    """
-    global _memory_id
-    if _memory_id is not None:
-        return _memory_id
-
-    client = _get_memory_client()
-    control = _get_control_client()
-
-    # Step 1: List memories and resolve by name
-    try:
-        memories = client.list_memories()
-        logger.info(f"list_memories returned {len(memories)} entries")
-
-        for mem in memories:
-            mid = mem.get("id", "")
-            if not mid:
-                continue
-
-            if mid.startswith(MEMORY_NAME):
-                _memory_id = mid
-                logger.info(f"Found memory by ID prefix: {_memory_id}")
-                return _memory_id
-
-            try:
-                detail = control.get_memory(memoryId=mid)
-                mem_detail = detail.get("memory", detail)
-                name = mem_detail.get("name", "")
-                if name == MEMORY_NAME:
-                    _memory_id = mid
-                    logger.info(f"Found memory by name lookup: {_memory_id}")
-                    return _memory_id
-            except Exception:
-                pass
-
-    except Exception as e:
-        logger.warning(f"list_memories failed: {e}")
-
-    # Step 2: Not found — create
-    try:
-        _memory_id = _create_memory()
-        return _memory_id
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            logger.warning(
-                f"Memory '{MEMORY_NAME}' already exists, retrying list..."
+    def _create_memory(self):
+        """Create new memory store"""
+        try:
+            response = self.control.create_memory(
+                name=MEMORY_NAME,
+                description="Market sentiment from social media posts",
+                memoryStrategies=[
+                    {
+                        "semanticMemoryStrategy": {
+                            "name": "sentiment_facts",
+                            "description": "Key sentiment facts",
+                            "namespaces": ["/facts/{actorId}/"],
+                        }
+                    },
+                    {
+                        "summaryMemoryStrategy": {
+                            "name": "sentiment_summaries",
+                            "description": "Rolling summaries of daily sentiment",
+                            "namespaces": ["/summaries/{actorId}/{sessionId}/"],
+                        }
+                    },
+                ],
+                eventExpiryDuration=EVENT_EXPIRY_DAYS,
             )
-            try:
-                memories = client.list_memories()
-                for mem in memories:
-                    mid = mem.get("id", "")
-                    if mid and mid.startswith(MEMORY_NAME):
-                        _memory_id = mid
-                        logger.info(f"Found memory on retry: {_memory_id}")
-                        return _memory_id
-            except Exception as e2:
-                logger.error(f"Retry list failed: {e2}")
-        else:
-            logger.error(f"Failed to create memory: {e}")
 
-    return _memory_id
+            memory_id = response.get("memory", {}).get("id") or response.get("id", "")
+            logger.info(f"Created memory: {memory_id}")
 
+            # Wait for memory to be ready
+            for _ in range(30):
+                try:
+                    mem = self.control.get_memory(memoryId=memory_id)
+                    if mem.get("memory", {}).get("status") == "ACTIVE":
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
 
-def _create_memory():
-    """One-time setup: create the memory store"""
-    client = _get_memory_client()
-
-    result = client.create_memory_and_wait(
-        name=MEMORY_NAME,
-        description="Market sentiment from social media posts — stores daily sentiment episodes and extracted facts",
-        strategies=[
-            {
-                "semanticMemoryStrategy": {
-                    "name": "sentiment_facts",
-                    "description": "Key sentiment facts: ticker bias, confidence, themes, notable accounts",
-                    "namespaces": ["/facts/{actorId}/"],
-                }
-            },
-            {
-                "summaryMemoryStrategy": {
-                    "name": "sentiment_summaries",
-                    "description": "Rolling summaries of daily sentiment analysis episodes",
-                    "namespaces": ["/summaries/{actorId}/{sessionId}/"],
-                }
-            },
-        ],
-        event_expiry_days=EVENT_EXPIRY_DAYS,
-    )
-
-    memory_id = result.get("id") or result.get("memoryId", "")
-    logger.info(f"Created Bedrock Memory store: {memory_id}")
-    return memory_id
+            return memory_id
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                logger.warning(f"Memory exists, retrying list...")
+                response = self.control.list_memories()
+                for mem in response.get("memories", []):
+                    if MEMORY_NAME in mem.get("arn", ""):
+                        return mem.get("id", "")
+            raise
 
 
-def store_sentiment(ticker, sentiment_result):
+_client = MemoryClient()
+
+
+def store_sentiment(ticker, sentiment_result, post_times=None):
     """
-    Store compact sentiment snapshot in Bedrock AgentCore memory.
-    Format designed for easy retrieval by trading agents.
-    """
-    today = datetime.now().strftime("%Y-%m-%d")
-    memory_id = _get_memory_id()
-    if not memory_id:
-        logger.warning(f"{ticker}: skipping store — no memory ID")
-        return
+    Store sentiment in Bedrock AgentCore memory.
 
-    client = _get_memory_client()
+    Args:
+        ticker: Ticker symbol
+        sentiment_result: Analysis result dict
+        post_times: Optional list of ISO timestamps from the analyzed posts
+    """
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    analysis_time = now.strftime("%H:%M:%S")
 
     direction = sentiment_result.get("sentiment", "unknown")
     confidence = sentiment_result.get("confidence", 0)
     post_count = sentiment_result.get("post_count", 0)
     themes = ", ".join(sentiment_result.get("themes", []))
-    notable = ", ".join(
-        f"@{a}" for a in sentiment_result.get("notable_accounts", [])
-    )
+    notable = ", ".join(f"@{a}" for a in sentiment_result.get("notable_accounts", []))
     summary = sentiment_result.get("summary", "")
 
+    # Build time range from post timestamps
+    time_range = ""
+    if post_times:
+        valid = sorted([t for t in post_times if t])
+        if valid:
+            earliest = valid[0][:16].replace("T", " ")
+            latest = valid[-1][:16].replace("T", " ")
+            time_range = f" | posts: {earliest} → {latest}"
+
     content = (
-        f"{ticker} | {today} | sentiment: {direction} {confidence}% | {post_count} posts\n"
+        f"{ticker} | {today} {analysis_time}{time_range} | sentiment: {direction} {confidence}% | {post_count} posts\n"
         f"themes: {themes or 'none'}\n"
         f"notable: {notable or 'none'}\n"
         f"summary: {summary}\n"
     )
 
     try:
-        t0 = time.time()
-        client.create_event(
-            memory_id=memory_id,
-            actor_id=f"sentiment/{ticker}",
-            session_id=f"sentiment-{today}",
-            messages=[(content, "ASSISTANT")],
+        _client.runtime.create_event(
+            memoryId=_client.memory_id,
+            actorId=f"sentiment/{ticker}",
+            sessionId=f"sentiment-{today}",
+            eventTimestamp=now.isoformat(),
+            payload=[{
+                "conversational": {
+                    "content": {"text": content},
+                    "role": "ASSISTANT"
+                }
+            }],
         )
-        logger.info(
-            f"{ticker}: stored sentiment ({direction} {confidence}%) ({time.time()-t0:.1f}s)"
-        )
+        logger.info(f"{ticker}: stored sentiment ({direction} {confidence}%) at {analysis_time}")
     except Exception as e:
         logger.warning(f"{ticker}: store_sentiment failed - {e}")
 
 
-def recall_sentiment(ticker, query=None):
-    """Retrieve historical sentiment from Bedrock Memory semantic store."""
-    if query is None:
-        query = f"{ticker} sentiment direction, confidence, themes, notable accounts"
+def store_market_sentiment(sentiment_result, post_times=None):
+    """Store overall market sentiment under actor 'sentiment/MARKET'."""
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    analysis_time = now.strftime("%H:%M:%S")
 
-    memory_id = _get_memory_id()
-    if not memory_id:
-        logger.warning(f"{ticker}: skipping recall — no memory ID")
-        return []
+    direction = sentiment_result.get("sentiment", "unknown")
+    confidence = sentiment_result.get("confidence", 0)
+    post_count = sentiment_result.get("post_count", 0)
+    themes = ", ".join(sentiment_result.get("themes", []))
+    risk = sentiment_result.get("risk_appetite", "unknown")
+    sector = sentiment_result.get("sector_rotation", "")
+    macro = sentiment_result.get("macro_concerns", "")
+    summary = sentiment_result.get("summary", "")
 
-    client = _get_memory_client()
-    facts = []
+    time_range = ""
+    if post_times:
+        valid = sorted([t for t in post_times if t])
+        if valid:
+            earliest = valid[0][:16].replace("T", " ")
+            latest = valid[-1][:16].replace("T", " ")
+            time_range = f" | posts: {earliest} → {latest}"
+
+    content = (
+        f"MARKET | {today} {analysis_time}{time_range} | sentiment: {direction} {confidence}% | {post_count} posts\n"
+        f"risk_appetite: {risk} | themes: {themes or 'none'}\n"
+        f"sector_rotation: {sector or 'none'}\n"
+        f"macro_concerns: {macro or 'none'}\n"
+        f"summary: {summary}\n"
+    )
 
     try:
-        t0 = time.time()
-        records = client.retrieve_memories(
-            memory_id=memory_id,
-            namespace=f"/summaries/sentiment/{ticker}/",
-            query=query,
-            top_k=5,
+        _client.runtime.create_event(
+            memoryId=_client.memory_id,
+            actorId="sentiment/MARKET",
+            sessionId=f"sentiment-{today}",
+            eventTimestamp=now.isoformat(),
+            payload=[{
+                "conversational": {
+                    "content": {"text": content},
+                    "role": "ASSISTANT"
+                }
+            }],
+        )
+        logger.info(f"MARKET: stored overall sentiment ({direction} {confidence}%) at {analysis_time}")
+    except Exception as e:
+        logger.warning(f"MARKET: store_market_sentiment failed - {e}")
+
+
+def recall_sentiment(ticker, query=None):
+    """Retrieve historical sentiment from Bedrock Memory."""
+    if query is None:
+        query = ticker
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    try:
+        events_response = _client.runtime.list_events(
+            memoryId=_client.memory_id,
+            actorId=f"sentiment/{ticker}",
+            sessionId=f"sentiment-{today}",
+            maxResults=10,
         )
 
-        for record in records:
-            content = record.get("content", {})
-            if isinstance(content, dict):
-                text = content.get("text", "")
-            elif isinstance(content, str):
-                text = content
-            else:
-                text = str(content)
-            if text:
-                facts.append(text)
+        facts = []
+        for event in events_response.get("events", []):
+            for item in event.get("payload", []):
+                text = item.get("conversational", {}).get("content", {}).get("text", "")
+                if text:
+                    facts.append(text)
 
-        dur = time.time() - t0
         if facts:
-            logger.info(f"{ticker}: recalled {len(facts)} sentiment facts ({dur:.1f}s)")
+            logger.info(f"{ticker}: recalled {len(facts)} events")
         else:
-            logger.info(f"{ticker}: no sentiment facts found ({dur:.1f}s)")
+            logger.info(f"{ticker}: no events found")
+
+        return facts
 
     except Exception as e:
         logger.warning(f"{ticker}: recall failed - {e}")
-
-    return facts
+        return []

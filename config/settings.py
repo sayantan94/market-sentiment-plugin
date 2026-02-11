@@ -16,3 +16,7 @@ SCREENSHOTS_DIR = os.path.join(DATA_DIR, "screenshots")
 
 # Backend
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "5050"))
+
+# Bedrock AgentCore Memory
+MEMORY_NAME = "market_sentiment"
+EVENT_EXPIRY_DAYS = 30
