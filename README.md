@@ -34,7 +34,7 @@
 A Chrome extension + local backend that lets you: 
 - Captures posts from X (Twitter) as you scroll
 - Run AI-powered sentiment + ticker inference on the post marked for analysis
-- Persist structured insights into AWS Bedrock AgentCore Memory 
+- Persist structured insights into [AWS Bedrock AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html)
 - Feed downstream trading agents or bot with narrative-aware contexts
 
 ### What It Actually Does
