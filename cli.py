@@ -11,6 +11,7 @@ import logging
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("analysis").setLevel(logging.INFO)
 
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -190,8 +191,13 @@ def cmd_clear(args):
 
 
 def cmd_recall(args):
+    import re
     from analysis.memory import recall_sentiment
     ticker = args.ticker.upper()
+    if not re.match(r'^[A-Z0-9]{1,10}$', ticker):
+        print(f"  {RED}Invalid ticker: {ticker}{RESET}")
+        print(f"  {DIM}Usage: msp recall AAPL -q \"find me bullish\"{RESET}")
+        return
     facts = recall_sentiment(ticker, query=args.query)
     if not facts:
         print(f"  {DIM}No history for ${ticker}{RESET}")

@@ -49,69 +49,91 @@ A Chrome extension + local backend that lets you:
 
 ---
 
-## How It Works
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant X as X (Twitter)
-    participant Ext as Chrome Extension
-    participant API as Local Backend<br/>:5050
-    participant FS as data/posts.json
-    participant CLI as msp analyze
-    participant Claude as Claude Sonnet 4.5<br/>(Bedrock)
-    participant Mem as Bedrock AgentCore<br/>Memory
+## Example Walkthrough
 
-    Note over User,X: Phase 1 — Capture posts while browsing
+### Step 1 — Save a post from X
 
-    User->>X: Browse timeline
-    X-->>Ext: Post rendered in DOM
-    Ext->>Ext: Inject $ button into post
-    User->>Ext: Click $ on interesting post
-    Ext->>Ext: Extract text, handle, timestamp,<br/>$TICKER tags, screenshot
-    Ext->>API: POST /save {post data + screenshot}
-    API->>FS: Append to posts.json
-    API-->>Ext: 200 OK (button turns green)
+While browsing X, the extension injects a **$** button into every post. Click it to save.
 
-    Note over User,Mem: Phase 2 — AI sentiment analysis
+<p>
+  <img src="docs/step1_save_post.png" alt="Click the $ button to save a post" width="560"/>
+  <br/>
+  <em>The $ button (circled in red) appears in the action bar of every post on X</em>
+</p>
 
-    User->>CLI: msp analyze
-    CLI->>FS: Load all saved posts
+The extension extracts:
+- Post text + screenshot
+- Handle (`@fiscal_ai`)
+- Timestamp
+- Ticker mentions (`$HOOD`)
 
-    rect rgb(40, 40, 60)
-        Note over CLI,Claude: Ticker Inference (untagged posts)
-        CLI->>Claude: "What tickers are these posts about?"
-        Claude-->>CLI: [{index, tickers, reason}, ...]
-        CLI->>CLI: Merge inferred tickers into post pool
-    end
+and sends it to the local backend, which saves it to `data/posts.json`.
 
-    rect rgb(40, 50, 40)
-        Note over CLI,Claude: Per-Ticker Sentiment
-        loop For each $TICKER (e.g. SPY, NVDA, TSLA)
-            CLI->>Claude: Posts text + screenshots for $TICKER
-            Claude-->>CLI: {sentiment, confidence, themes, summary}
-            CLI->>Mem: store_sentiment(ticker, result, timestamps)
-        end
-    end
+### Step 2 — Analyze with `msp analyze`
 
-    rect rgb(50, 40, 40)
-        Note over CLI,Claude: Overall Market Mood
-        CLI->>Claude: All posts (cross-ticker)
-        Claude-->>CLI: {sentiment, risk_appetite, sector_rotation, macro}
-        CLI->>Mem: store_market_sentiment(result, timestamps)
-    end
-
-    CLI->>FS: Archive posts, clear active file
-
-    Note over User,Mem: Phase 3 — Recall anytime
-
-    User->>CLI: msp recall SPY
-    CLI->>Mem: recall_sentiment("SPY")
-    Mem-->>CLI: Historical sentiment entries
-    CLI-->>User: SPY: bullish 72% — themes: gamma squeeze, call wall
-
-    Note over Mem: Trading agents can also recall<br/>sentiment during their analysis loop
 ```
+$ msp analyze
+
+  1 posts (1 tagged, 0 untagged)
+  $HOOD(1)
+  $HOOD: bullish 72% (6.4s)
+  MARKET: bullish 68% risk=moderate (3.1s)
+  2 analyzed, stored in memory
+```
+
+LLM reads the post text + screenshot, determines sentiment, confidence, and themes.
+Posts without explicit `$TICKER` tags are auto-inferred by the LLM.
+
+<details>
+<summary>Sample analysis output</summary>
+
+```json
+{
+  "sentiment": "bullish",
+  "confidence": 72,
+  "themes": [
+    "Prediction markets growth catalyst",
+    "CEO optimism on new business line",
+    "Long-term revenue expansion potential"
+  ],
+  "notable_accounts": ["@fiscal_ai"],
+  "summary": "Strong bullish sentiment driven by CEO Vlad Tenev's commentary on prediction markets becoming their fastest growing business with $300M+ run rate in first year. He projects this is the beginning of a 'prediction market super cycle' that could drive trillions in volume over time, with specific catalysts mentioned including Olympics and World Cup events.",
+  "visual_insights": "Screenshot shows official investor relations transcript highlighting prediction markets as the fastest growing business in Robinhood's history with $300M+ run rate. The verified Fiscal.ai account amplifies this message with high engagement (8.5K views, 111 likes), lending credibility to the bullish thesis.",
+  "noise_filtered": 0,
+  "signal_posts": 1
+}
+```
+
+</details>
+
+### Step 3 — Recall anytime with `msp recall`
+
+```
+$ msp recall HOOD
+
+$HOOD: 10 memories
+
+[1] HOOD | 2026-02-10 21:42:36 | posts: 2026-02-11 00:15 → 2026-02-11 00:15 | sentiment: bullish 72% | 1 posts
+themes: Prediction markets growth catalyst, CEO optimism on new business line, Long-term revenue expansion potential
+notable: @@fiscal_ai
+summary: Strong bullish sentiment driven by CEO Vlad Tenev's commentary on prediction markets becoming their fastest growing business with $300M+ run rate in first year. He projects this is the beginning of a 'prediction market super cycle' that could drive trillions in volume over time, with specific catalysts mentioned including Olympics and World Cup events.
+
+ [2] HOOD | 2026-02-10 21:13:00 | posts: 2026-02-11 03:45 → 2026-02-11 03:45 | sentiment: bearish 85% | 1 posts
+themes: Q4 2025 earnings miss, sharp price decline, weaker-than-expected revenue
+notable: @@RoundtableSpace, @@0xMarioNawfal
+summary: HOOD experienced a sharp 10% drop after reporting Q4 2025 revenue that missed expectations. The post shows a dramatic single-candle decline on the chart, indicating significant negative market reaction to the earnings report. The visual evidence confirms strong selling pressure following the revenue disappointment.
+
+[3] HOOD | 2026-02-10 | sentiment: bullish 45% | 1 posts
+themes: institutional ownership, ARK Invest holdings, Cathie Wood positioning
+notable: @@ArkkDaily
+summary: The only available post shows ARK Invest holds $369.5M worth of HOOD across multiple ETFs (3.98-4.55% positions), signaling institutional confidence from Cathie Wood. However, this is informational data rather than a directional call, and represents only one data point without broader market sentiment context.
+
+
+```
+
+Each memory includes timestamps so you can track how sentiment shifted over the day.
+Your trading agents can also recall this during their analysis loop.
 
 ---
 
@@ -177,3 +199,66 @@ msp recall-market        # overall market mood
 
 ---
 
+## How It Works
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant X as X (Twitter)
+    participant Ext as Chrome Extension
+    participant API as Local Backend<br/>:5050
+    participant FS as data/posts.json
+    participant CLI as msp analyze
+    participant Claude as Claude Sonnet 4.5<br/>(Bedrock)
+    participant Mem as Bedrock AgentCore<br/>Memory
+
+    Note over User,X: Phase 1 — Capture posts while browsing
+
+    User->>X: Browse timeline
+    X-->>Ext: Post rendered in DOM
+    Ext->>Ext: Inject $ button into post
+    User->>Ext: Click $ on interesting post
+    Ext->>Ext: Extract text, handle, timestamp,<br/>$TICKER tags, screenshot
+    Ext->>API: POST /save {post data + screenshot}
+    API->>FS: Append to posts.json
+    API-->>Ext: 200 OK (button turns green)
+
+    Note over User,Mem: Phase 2 — AI sentiment analysis
+
+    User->>CLI: msp analyze
+    CLI->>FS: Load all saved posts
+
+    rect rgb(40, 40, 60)
+        Note over CLI,Claude: Ticker Inference (untagged posts)
+        CLI->>Claude: "What tickers are these posts about?"
+        Claude-->>CLI: [{index, tickers, reason}, ...]
+        CLI->>CLI: Merge inferred tickers into post pool
+    end
+
+    rect rgb(40, 50, 40)
+        Note over CLI,Claude: Per-Ticker Sentiment
+        loop For each $TICKER (e.g. SPY, NVDA, TSLA)
+            CLI->>Claude: Posts text + screenshots for $TICKER
+            Claude-->>CLI: {sentiment, confidence, themes, summary}
+            CLI->>Mem: store_sentiment(ticker, result, timestamps)
+        end
+    end
+
+    rect rgb(50, 40, 40)
+        Note over CLI,Claude: Overall Market Mood
+        CLI->>Claude: All posts (cross-ticker)
+        Claude-->>CLI: {sentiment, risk_appetite, sector_rotation, macro}
+        CLI->>Mem: store_market_sentiment(result, timestamps)
+    end
+
+    CLI->>FS: Archive posts, clear active file
+
+    Note over User,Mem: Phase 3 — Recall anytime
+
+    User->>CLI: msp recall SPY
+    CLI->>Mem: recall_sentiment("SPY")
+    Mem-->>CLI: Historical sentiment entries
+    CLI-->>User: SPY: bullish 72% — themes: gamma squeeze, call wall
+
+    Note over Mem: Trading agents can also recall<br/>sentiment during their analysis loop
+```

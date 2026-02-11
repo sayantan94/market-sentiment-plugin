@@ -130,7 +130,11 @@ def call_bedrock(messages_content, max_tokens=20000):
     )
 
     body = json.loads(response["body"].read())
-    return body["content"][0]["text"]
+    text = body["content"][0]["text"]
+    tokens_in = body.get("usage", {}).get("input_tokens", "?")
+    tokens_out = body.get("usage", {}).get("output_tokens", "?")
+    logger.info(f"LLM ({tokens_in} in / {tokens_out} out):\n{text}")
+    return text
 
 
 def parse_response(response_text):
