@@ -194,12 +194,19 @@ def store_market_sentiment(sentiment_result, post_times=None):
 
 
 def recall_sentiment(ticker, query=None):
-    """Retrieve historical sentiment from Bedrock Memory."""
-    if query is None:
-        query = ticker
+    """Retrieve historical sentiment from Bedrock Memory.
 
+    Without query: lists recent events for the ticker.
+    With query: semantic search across the ticker's memories.
+    """
+    if query:
+        return _recall_semantic(ticker, query)
+    return _recall_events(ticker)
+
+
+def _recall_events(ticker):
+    """List recent events for a ticker."""
     today = datetime.now().strftime("%Y-%m-%d")
-    
     try:
         events_response = _client.runtime.list_events(
             memoryId=_client.memory_id,
@@ -223,5 +230,34 @@ def recall_sentiment(ticker, query=None):
         return facts
 
     except Exception as e:
-        logger.warning(f"{ticker}: recall failed - {e}")
+        logger.warning(f"{ticker}: recall_events failed - {e}")
+        return []
+
+
+def _recall_semantic(ticker, query):
+    """Semantic search across a ticker's memories."""
+    try:
+        response = _client.runtime.retrieve_memories(
+            memoryId=_client.memory_id,
+            namespace=f"/facts/sentiment/{ticker}/",
+            query=query,
+            maxResults=10,
+        )
+
+        facts = []
+        for record in response.get("memories", []):
+            content = record.get("content", {})
+            text = content.get("text", "") if isinstance(content, dict) else str(content)
+            if text:
+                facts.append(text)
+
+        if facts:
+            logger.info(f"{ticker}: semantic search found {len(facts)} results for '{query}'")
+        else:
+            logger.info(f"{ticker}: no results for '{query}'")
+
+        return facts
+
+    except Exception as e:
+        logger.warning(f"{ticker}: semantic recall failed - {e}")
         return []
