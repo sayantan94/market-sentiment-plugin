@@ -138,6 +138,35 @@ Array of objects, one per post (same order as input). Use the index from the pos
 ]"""
 
 
+def build_research_query_prompt(query):
+    """
+    Convert a natural-language research query into tickers + keywords
+    for the Chrome extension to scan on X.
+    """
+    return f"""You are a financial research assistant. Convert the user's natural-language query into specific stock tickers and search keywords for scanning social media (X/Twitter).
+
+# EXAMPLES
+- "robinhood stock" → {{"tickers": ["HOOD"], "keywords": ["robinhood", "HOOD"], "reasoning": "Robinhood Markets trades as HOOD"}}
+- "is nvidia overvalued" → {{"tickers": ["NVDA"], "keywords": ["nvidia", "NVDA", "overvalued"], "reasoning": "Nvidia trades as NVDA"}}
+- "bitcoin etf flows" → {{"tickers": ["IBIT", "GBTC", "BITO"], "keywords": ["bitcoin etf", "BTC etf", "inflows"], "reasoning": "Major bitcoin ETFs are IBIT, GBTC, BITO"}}
+- "tech earnings this week" → {{"tickers": ["AAPL", "MSFT", "GOOGL", "META"], "keywords": ["tech earnings", "earnings week"], "reasoning": "Major tech companies reporting"}}
+- "EV market sentiment" → {{"tickers": ["TSLA", "RIVN", "LCID", "NIO"], "keywords": ["EV", "electric vehicle"], "reasoning": "Major EV manufacturers"}}
+
+# RULES
+1. Return 1-5 tickers, most relevant first
+2. Keywords should be good X/Twitter search terms (cashtags are added automatically)
+3. If the query mentions a specific company, always include its ticker
+4. For broad themes, pick the top 3-4 most representative tickers
+
+# USER QUERY
+"{query}"
+
+# OUTPUT FORMAT
+Return ONLY valid JSON. No text before or after.
+
+{{"tickers": ["TICK1", "TICK2"], "keywords": ["keyword1", "keyword2"], "reasoning": "brief explanation"}}"""
+
+
 def build_market_sentiment_prompt(posts):
     """
     Build a prompt for overall market sentiment across ALL posts.
@@ -175,4 +204,50 @@ Return ONLY valid JSON. No text before or after.
   "macro_concerns": "any macro themes mentioned or empty string",
   "noise_filtered": 3,
   "signal_posts": 8
+}}"""
+
+
+def build_recall_insight_prompt(ticker, facts, question=None):
+    """
+    Build a prompt that analyzes historical sentiment memories for a ticker.
+    If no question is given, defaults to sentiment evolution / phase change analysis.
+    """
+    facts_block = "\n\n".join(f"[{i+1}] {f.strip()}" for i, f in enumerate(facts))
+
+    if question:
+        task = question
+    else:
+        task = (
+            "Identify sentiment phase changes, trend reversals, and key shifts over time. "
+            "What was the trajectory? Were there inflection points? "
+            "What catalysts drove changes? Is the current sentiment consistent or diverging from recent history?"
+        )
+
+    return f"""You are a market sentiment analyst reviewing historical sentiment data for ${ticker}.
+
+# SENTIMENT HISTORY (chronological)
+{facts_block}
+
+# TASK
+{task}
+
+# RULES
+1. Focus on CHANGES over time — not just the latest reading
+2. Identify phase transitions: bullish->bearish, low confidence->high confidence, etc.
+3. Call out specific dates and catalysts when sentiment shifted
+4. Note if themes are evolving, recurring, or contradicting each other
+5. Be concise and actionable — a trader should read this in 30 seconds
+
+# OUTPUT FORMAT
+Return ONLY valid JSON. No text before or after.
+
+{{
+  "current_phase": "bullish or bearish or neutral or transitioning",
+  "confidence_trend": "rising or falling or stable",
+  "phase_changes": [
+    {{"date": "YYYY-MM-DD", "from": "bearish", "to": "bullish", "catalyst": "brief reason"}}
+  ],
+  "key_insight": "1-2 sentence summary of the most important pattern",
+  "outlook": "what the trajectory suggests going forward",
+  "data_points": 5
 }}"""

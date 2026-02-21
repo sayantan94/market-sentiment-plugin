@@ -2,7 +2,12 @@ __pycache__/
 *.pyc
 .env
 data/posts.json
+data/scan.json
+data/seen.json
 data/screenshots/
+data/archive/
+data/server.pid
+data/server.log
 .venv/
 *.egg-info/
 dist/

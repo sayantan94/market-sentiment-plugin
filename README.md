@@ -1,22 +1,10 @@
+<div align="center">
 
+<img src="extension/icon128.png" alt="Market Sentiment" width="80"/>
 
-```
-  ███╗   ███╗  █████╗  ██████╗  ██╗  ██╗ ███████╗ ████████╗
-  ████╗ ████║ ██╔══██╗ ██╔══██╗ ██║ ██╔╝ ██╔════╝ ╚══██╔══╝
-  ██╔████╔██║ ███████║ ██████╔╝ █████╔╝  █████╗      ██║
-  ██║╚██╔╝██║ ██╔══██║ ██╔══██╗ ██╔═██╗  ██╔══╝      ██║
-  ██║ ╚═╝ ██║ ██║  ██║ ██║  ██║ ██║  ██╗ ███████╗    ██║
-  ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚══════╝    ╚═╝
+# Market Sentiment
 
-  ███████╗ ███████╗ ███╗   ██╗ ████████╗ ██╗ ███╗   ███╗ ███████╗ ███╗   ██╗ ████████╗
-  ██╔════╝ ██╔════╝ ████╗  ██║ ╚══██╔══╝ ██║ ████╗ ████║ ██╔════╝ ████╗  ██║ ╚══██╔══╝
-  ███████╗ █████╗   ██╔██╗ ██║    ██║    ██║ ██╔████╔██║ █████╗   ██╔██╗ ██║    ██║
-  ╚════██║ ██╔══╝   ██║╚██╗██║    ██║    ██║ ██║╚██╔╝██║ ██╔══╝   ██║╚██╗██║    ██║
-  ███████║ ███████╗ ██║ ╚████║    ██║    ██║ ██║ ╚═╝ ██║ ███████╗ ██║ ╚████║    ██║
-  ╚══════╝ ╚══════╝ ╚═╝  ╚═══╝    ╚═╝    ╚═╝ ╚═╝     ╚═╝ ╚══════╝ ╚═╝  ╚═══╝    ╚═╝
-```
-
-**Save posts from X. Run AI sentiment analysis. Feed your trading agents.**
+**Capture posts from X. Run AI sentiment analysis. Feed your trading agents.**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Claude Sonnet](https://img.shields.io/badge/LLM-Claude%20Sonnet%204.5-blueviolet.svg)](https://docs.anthropic.com/)
@@ -28,65 +16,201 @@
 
 ---
 
->This project is for educational and research purposes only. It does not constitute financial advice. The authors accept no responsibility for any trading losses, damages, or decisions made based on the output of this tool. Use at your own risk.
-
-
-A Chrome extension + local backend that lets you: 
-- Captures posts from X (Twitter) as you scroll
-- Run AI-powered sentiment + ticker inference on the post marked for analysis
-- Persist structured insights into [AWS Bedrock AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html)
-- Feed downstream trading agents or bot with narrative-aware contexts
-
-### What It Actually Does
-
-1. **Capture** — You browse X. See a post about $SPY gamma walls? Click the `$` button injected into the post. The extension grabs the text, handle, timestamp, tickers, and a screenshot, then sends it to a local backend running on `:5050`.
-
-2. **Analyze** — Run `msp analyze`. Claude reads every saved post (text + screenshots). Posts without explicit `$TICKER` tags get tickers inferred by the LLM. Each ticker gets a sentiment verdict (bullish/bearish/neutral + confidence + themes). An overall market mood is computed across all posts.
-
-3. **Store** — Results are persisted into Bedrock AgentCore Memory with timestamps (both post time range and analysis time) so you can track sentiment shifts across sessions.
-
-4. **Recall** — Run `msp recall SPY` anytime to see past sentiment. Or your trading agents (like the 0DTE copilot) can pull crowd sentiment from memory during their analysis loop.
+> This project is for educational and research purposes only. It does not constitute financial advice. The authors accept no responsibility for any trading losses, damages, or decisions made based on the output of this tool. Use at your own risk.
 
 ---
 
+## What It Does
 
-## Example Walkthrough
+A Chrome extension + CLI that captures social media posts from X, runs AI-powered sentiment analysis via Claude on Bedrock, and persists structured insights into long-term memory for downstream trading agents.
 
-### Step 1 — Save a post from X
+There are **two ways to capture posts**: manually (click `$` on individual posts) or auto-scan (the extension crawls X search results hands-free).
 
-While browsing X, the extension injects a **$** button into every post. Click it to save.
+---
+
+## Quick Start
+
+### 1. Install
+
+```bash
+cd market-sentiment-plugin
+pip install -e .
+```
+
+### 2. Load Chrome Extension
+
+1. Go to `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select the `extension/` folder
+
+### 3. Check Setup
+
+```bash
+msp-cli doctor
+```
+```
+  Doctor
+
+  Backend      online :5050 (pid 12345)
+  Posts         0 saved
+  AWS           authenticated (account 1234...)
+```
+
+---
+
+## Workflow 1: Manual Capture
+
+Save individual posts as you browse X.
+
+### Step 1 — Click `$` on a post
+
+The extension injects a **$** button into every post's action bar. Click it to save the post text, handle, timestamp, tickers, and a cropped screenshot.
 
 <p>
   <img src="docs/step1_save_post.png" alt="Click the $ button to save a post" width="560"/>
   <br/>
-  <em>The $ button (circled in red) appears in the action bar of every post on X</em>
+  <em>The $ button appears in the action bar of every post on X</em>
 </p>
 
-The extension extracts:
-- Post text + screenshot
-- Handle (`@fiscal_ai`)
-- Timestamp
-- Ticker mentions (`$HOOD`)
+### Step 2 — Analyze
 
-and sends it to the local backend, which saves it to `data/posts.json`.
-
-### Step 2 — Analyze with `msp analyze`
-
+```bash
+msp-cli analyze
 ```
-$ msp analyze
-
-  1 posts (1 tagged, 0 untagged)
-  $HOOD(1)
+```
+  12 posts (10 tagged, 2 untagged)
+  $HOOD(8) $AAPL(4)
   $HOOD: bullish 72% (6.4s)
+  $AAPL: bearish 58% (4.2s)
   MARKET: bullish 68% risk=moderate (3.1s)
-  2 analyzed, stored in memory
+  3 analyzed, stored in memory
 ```
 
-LLM reads the post text + screenshot, determines sentiment, confidence, and themes.
-Posts without explicit `$TICKER` tags are auto-inferred by the LLM.
+### Step 3 — Recall
+
+```bash
+msp-cli recall HOOD
+```
+```
+  $HOOD: 3 memories
+
+  [1] HOOD | 2026-02-10 21:42 | sentiment: bullish 72% | 12 posts
+  themes: Prediction markets growth, CEO optimism
+  summary: Strong bullish sentiment driven by prediction markets...
+
+  [2] HOOD | 2026-02-10 21:13 | sentiment: bearish 85% | 1 posts
+  themes: Q4 2025 earnings miss, sharp price decline
+  summary: HOOD dropped 10% after revenue missed expectations...
+```
+
+### Step 4 — Ask for insight
+
+Run `--ask` to have Claude analyze the full sentiment history for phase changes:
+
+```bash
+msp-cli recall HOOD --ask
+```
+```
+  --- Insight ---
+  Phase: transitioning  |  Confidence: falling
+  Phase changes:
+    2026-02-10: bullish -> bearish — Q4 earnings miss, 10% price drop
+    2026-02-11: bearish -> bullish — ARK institutional buying, prediction markets thesis
+
+  Sentiment whipsawed around earnings. Bearish spike was event-driven
+  but quickly offset by structural bulls citing prediction markets.
+  Outlook: Leaning bullish but low conviction — needs follow-through above $85.
+```
+
+Or ask a custom question over the history:
+
+```bash
+msp-cli recall HOOD --ask "what are the recurring bullish catalysts?"
+```
+
+---
+
+## Workflow 2: Auto-Scan from Chrome Extension
+
+Let the extension crawl X search results automatically — no manual clicking needed.
+
+### Step 1 — Open the extension popup
+
+Click the <img src="extension/icon16.png" width="16" style="vertical-align: middle;"/> icon in Chrome's toolbar. Enter one or more tickers (e.g. `HOOD, TSM, ORCL`) and click **Start Scan**.
+
+<p>
+  <img src="docs/auto-capture.png" alt="Extension popup during auto-scan" width="300"/>
+  <br/>
+  <em>The popup shows live progress — 32/50 posts captured for $HOOD</em>
+</p>
+
+### Step 2 — Extension crawls X automatically
+
+The extension will:
+1. Navigate to X search for `$HOOD`
+2. Scroll through **Top** results, saving each post + screenshot
+3. Switch to **Latest** results, continue saving
+4. Move to next ticker (`$TSM`, then `$ORCL`), repeat
+5. A blue banner at the top of X shows live progress
+
+Click **Stop Scan** at any time to stop early. Posts captured so far are kept.
+
+### Step 4 — Analyze and recall
+
+Once the scan completes:
+
+```bash
+msp-cli analyze          # analyze all captured posts
+msp-cli recall HOOD      # see sentiment history
+msp-cli recall-market    # overall market mood
+```
+
+---
+
+## Workflow 3: CLI Research (Auto-Scan via SSE)
+
+The fastest path — one command does everything: LLM identifies tickers, queues a scan, extension picks it up automatically.
+
+### Step 1 — Research
+
+```bash
+msp-cli research "is nvidia overvalued"
+```
+```
+  Starting backend on :5050... ok
+  Researching: "is nvidia overvalued"
+  Tickers: $NVDA
+  Keywords: nvidia, NVDA, overvalued
+  NVDA is the primary ticker for Nvidia
+
+  Scan queued — waiting for extension to pick up...
+  Scanning $NVDA [top] — 14 posts
+  Done! 23 posts captured.
+  Next: msp-cli analyze -t NVDA
+```
+
+**What happens under the hood:**
+1. CLI auto-starts the backend daemon if needed
+2. Calls Claude (Bedrock) with structured tool_use to convert your query into tickers + keywords
+3. POSTs a scan request to the backend
+4. Extension picks up the scan via SSE (Server-Sent Events)
+5. Extension auto-navigates X, scrolls, captures posts + screenshots
+6. CLI shows real-time progress via SSE stream
+7. Press `Ctrl+C` to detach — the scan continues in the extension
+
+### Step 2 — Analyze
+
+```bash
+msp-cli analyze -t NVDA
+```
+
+---
+
+## Sample Analysis Output
 
 <details>
-<summary>Sample analysis output</summary>
+<summary>Per-ticker sentiment JSON</summary>
 
 ```json
 {
@@ -98,96 +222,55 @@ Posts without explicit `$TICKER` tags are auto-inferred by the LLM.
     "Long-term revenue expansion potential"
   ],
   "notable_accounts": ["@fiscal_ai"],
-  "summary": "Strong bullish sentiment driven by CEO Vlad Tenev's commentary on prediction markets becoming their fastest growing business with $300M+ run rate in first year. He projects this is the beginning of a 'prediction market super cycle' that could drive trillions in volume over time, with specific catalysts mentioned including Olympics and World Cup events.",
-  "visual_insights": "Screenshot shows official investor relations transcript highlighting prediction markets as the fastest growing business in Robinhood's history with $300M+ run rate. The verified Fiscal.ai account amplifies this message with high engagement (8.5K views, 111 likes), lending credibility to the bullish thesis.",
+  "summary": "Strong bullish sentiment driven by CEO Vlad Tenev's commentary on prediction markets becoming their fastest growing business with $300M+ run rate in first year.",
+  "visual_insights": "Screenshot shows official investor relations transcript highlighting prediction markets as the fastest growing business in Robinhood's history.",
   "noise_filtered": 0,
-  "signal_posts": 1
+  "signal_posts": 12
 }
 ```
 
 </details>
 
-### Step 3 — Recall anytime with `msp recall`
+<details>
+<summary>Market-wide sentiment JSON</summary>
 
-```
-$ msp recall HOOD
-
-$HOOD: 10 memories
-
-[1] HOOD | 2026-02-10 21:42:36 | posts: 2026-02-11 00:15 → 2026-02-11 00:15 | sentiment: bullish 72% | 1 posts
-themes: Prediction markets growth catalyst, CEO optimism on new business line, Long-term revenue expansion potential
-notable: @@fiscal_ai
-summary: Strong bullish sentiment driven by CEO Vlad Tenev's commentary on prediction markets becoming their fastest growing business with $300M+ run rate in first year. He projects this is the beginning of a 'prediction market super cycle' that could drive trillions in volume over time, with specific catalysts mentioned including Olympics and World Cup events.
-
- [2] HOOD | 2026-02-10 21:13:00 | posts: 2026-02-11 03:45 → 2026-02-11 03:45 | sentiment: bearish 85% | 1 posts
-themes: Q4 2025 earnings miss, sharp price decline, weaker-than-expected revenue
-notable: @@RoundtableSpace, @@0xMarioNawfal
-summary: HOOD experienced a sharp 10% drop after reporting Q4 2025 revenue that missed expectations. The post shows a dramatic single-candle decline on the chart, indicating significant negative market reaction to the earnings report. The visual evidence confirms strong selling pressure following the revenue disappointment.
-
-[3] HOOD | 2026-02-10 | sentiment: bullish 45% | 1 posts
-themes: institutional ownership, ARK Invest holdings, Cathie Wood positioning
-notable: @@ArkkDaily
-summary: The only available post shows ARK Invest holds $369.5M worth of HOOD across multiple ETFs (3.98-4.55% positions), signaling institutional confidence from Cathie Wood. However, this is informational data rather than a directional call, and represents only one data point without broader market sentiment context.
-
-
+```json
+{
+  "sentiment": "bullish",
+  "confidence": 68,
+  "themes": ["tech earnings optimism", "AI infrastructure spend"],
+  "risk_appetite": "risk-on",
+  "sector_rotation": "tech and AI leading",
+  "macro_concerns": "tariff uncertainty",
+  "summary": "Overall bullish with risk-on tone. Tech earnings driving sentiment...",
+  "noise_filtered": 3,
+  "signal_posts": 18
+}
 ```
 
-Each memory includes timestamps so you can track how sentiment shifted over the day.
-Your trading agents can also recall this during their analysis loop.
-
----
-
-## Quick Start
-
-**1. Install**
-
-```bash
-cd market-sentiment-plugin
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
-```
-
-**2. Load Chrome Extension**
-
-```
-1. Go to chrome://extensions
-2. Select Developer mode 
-3. Click on Load unpacked 
-4. Select `extension/` folder
-```
-
-**3. Run**
-
-```bash
-# Terminal: start the collector
-msp serve
-
-# Browse X, click $ on posts you find interesting...
-
-# When ready, analyze everything
-msp analyze
-```
-
-**4. Recall later**
-
-```bash
-msp recall SPY           # per-ticker history
-msp recall-market        # overall market mood
-```
+</details>
 
 ---
 
 ## CLI Reference
 
-| Command               | Description |
-|-----------------------|-------------|
-| `msp serve`           | Start collector backend on `:5050` |
-| `msp analyze`         | Analyze all saved posts |
-| `msp analyze -t SPY`  | Single ticker |
-| `msp posts`           | List saved posts |
-| `msp clear`           | Clear saved posts |
-| `msp recall <Ticker>` | Recall past sentiment from memory |
-| `msp recall-market`   | Recall overall market mood |
+| Command | Description |
+|---------|-------------|
+| `msp-cli doctor` | Check backend, AWS creds, setup health |
+| `msp-cli start` | Start backend as background daemon |
+| `msp-cli stop` | Stop backend daemon |
+| `msp-cli serve` | Start backend in foreground (debug mode) |
+| `msp-cli research "query"` | LLM-powered research + auto-scan via SSE |
+| `msp-cli analyze` | Analyze all saved posts |
+| `msp-cli analyze -t SPY` | Analyze single ticker |
+| `msp-cli posts` | List saved posts |
+| `msp-cli posts -t SPY` | List posts for a ticker |
+| `msp-cli clear` | Clear saved posts |
+| `msp-cli recall TICKER` | Recall past sentiment (30 days) |
+| `msp-cli recall TICKER -q "..."` | Semantic search across memories |
+| `msp-cli recall TICKER --ask` | LLM analysis of sentiment shifts + phase changes |
+| `msp-cli recall TICKER --ask "custom question"` | Custom LLM question over history |
+| `msp-cli recall-market` | Recall overall market mood |
 
 ---
 
@@ -195,70 +278,48 @@ msp recall-market        # overall market mood
 
 - Python 3.11+
 - Google Chrome
-- AWS credentials 
+- AWS credentials (`aws configure` or `export AWS_ACCESS_KEY_ID=...`)
 
 ---
 
-## How It Works
+## Architecture
 
 ```mermaid
 sequenceDiagram
     actor User
     participant X as X (Twitter)
     participant Ext as Chrome Extension
-    participant API as Local Backend<br/>:5050
+    participant API as Local Backend :5050
     participant FS as data/posts.json
-    participant CLI as msp analyze
+    participant CLI as msp-cli
     participant Claude as Claude Sonnet 4.5<br/>(Bedrock)
     participant Mem as Bedrock AgentCore<br/>Memory
 
-    Note over User,X: Phase 1 — Capture posts while browsing
+    Note over User,X: Capture — Manual or Auto-Scan
 
-    User->>X: Browse timeline
-    X-->>Ext: Post rendered in DOM
-    Ext->>Ext: Inject $ button into post
-    User->>Ext: Click $ on interesting post
-    Ext->>Ext: Extract text, handle, timestamp,<br/>$TICKER tags, screenshot
-    Ext->>API: POST /save {post data + screenshot}
+    User->>Ext: Click $ on post (manual)
+    Ext->>API: POST /save {text, screenshot, tickers}
     API->>FS: Append to posts.json
-    API-->>Ext: 200 OK (button turns green)
 
-    Note over User,Mem: Phase 2 — AI sentiment analysis
+    User->>CLI: msp-cli research "query" (auto)
+    CLI->>Claude: Convert query → tickers (tool_use)
+    CLI->>API: POST /scan {tickers, keywords}
+    API-->>Ext: SSE: scan pending
+    Ext->>X: Auto-navigate, scroll, capture
+    Ext->>API: PATCH /scan {progress}
+    API-->>CLI: SSE: real-time updates
 
-    User->>CLI: msp analyze
-    CLI->>FS: Load all saved posts
+    Note over User,Mem: Analyze
 
-    rect rgb(40, 40, 60)
-        Note over CLI,Claude: Ticker Inference (untagged posts)
-        CLI->>Claude: "What tickers are these posts about?"
-        Claude-->>CLI: [{index, tickers, reason}, ...]
-        CLI->>CLI: Merge inferred tickers into post pool
-    end
+    User->>CLI: msp-cli analyze
+    CLI->>FS: Load posts
+    CLI->>Claude: Infer tickers + sentiment (text + screenshots)
+    CLI->>Mem: Store results with timestamps
 
-    rect rgb(40, 50, 40)
-        Note over CLI,Claude: Per-Ticker Sentiment
-        loop For each $TICKER (e.g. SPY, NVDA, TSLA)
-            CLI->>Claude: Posts text + screenshots for $TICKER
-            Claude-->>CLI: {sentiment, confidence, themes, summary}
-            CLI->>Mem: store_sentiment(ticker, result, timestamps)
-        end
-    end
+    Note over User,Mem: Recall (30 days)
 
-    rect rgb(50, 40, 40)
-        Note over CLI,Claude: Overall Market Mood
-        CLI->>Claude: All posts (cross-ticker)
-        Claude-->>CLI: {sentiment, risk_appetite, sector_rotation, macro}
-        CLI->>Mem: store_market_sentiment(result, timestamps)
-    end
-
-    CLI->>FS: Archive posts, clear active file
-
-    Note over User,Mem: Phase 3 — Recall anytime
-
-    User->>CLI: msp recall SPY
-    CLI->>Mem: recall_sentiment("SPY")
-    Mem-->>CLI: Historical sentiment entries
-    CLI-->>User: SPY: bullish 72% — themes: gamma squeeze, call wall
-
-    Note over Mem: Trading agents can also recall<br/>sentiment during their analysis loop
+    User->>CLI: msp-cli recall SPY
+    CLI->>Mem: List events across 30 days
+    Mem-->>CLI: Sentiment timeline
 ```
+

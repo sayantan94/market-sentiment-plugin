@@ -18,14 +18,15 @@ from datetime import datetime
 
 import boto3
 
-from analysis.memory import store_sentiment, store_market_sentiment, recall_sentiment
 from analysis.prompts import (
     build_sentiment_prompt,
     build_multimodal_content,
     build_ticker_inference_prompt,
     build_market_sentiment_prompt,
+    build_research_query_prompt,
+    build_recall_insight_prompt,
 )
-from config.settings import AWS_REGION, BEDROCK_MODEL_ID, POSTS_FILE, SCREENSHOTS_DIR
+from config.settings import AWS_REGION, BEDROCK_MODEL_ID, POSTS_FILE, SEEN_FILE, SCREENSHOTS_DIR, DATA_DIR
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,6 +82,18 @@ def archive_posts(posts):
             if os.path.exists(src):
                 os.rename(src, dst)
     
+    # Mark all archived URLs as seen for dedup
+    urls = [p.get("url") for p in posts if p.get("url")]
+    if urls:
+        seen = set()
+        if os.path.exists(SEEN_FILE):
+            with open(SEEN_FILE, "r") as f:
+                seen = set(json.load(f))
+        seen.update(urls)
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(SEEN_FILE, "w") as f:
+            json.dump(list(seen), f)
+
     logger.info(f"Archived {len(posts)} posts to {archive_file}")
 
 
@@ -144,6 +157,68 @@ def parse_response(response_text):
     if json_start == -1 or json_end <= json_start:
         raise ValueError("No valid JSON found in response")
     return json.loads(response_text[json_start:json_end])
+
+
+def research_query(query):
+    """Use Bedrock LLM with tool_use to convert a query into structured tickers + keywords."""
+    client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+
+    tool_schema = {
+        "name": "research_result",
+        "description": "Return the tickers, keywords, and reasoning for a research query",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tickers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "1-5 stock ticker symbols, most relevant first (e.g. HOOD, NVDA)",
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Search keywords for X/Twitter (cashtags added automatically)",
+                },
+                "reasoning": {
+                    "type": "string",
+                    "description": "Brief explanation of why these tickers/keywords were chosen",
+                },
+            },
+            "required": ["tickers", "keywords", "reasoning"],
+        },
+    }
+
+    prompt = build_research_query_prompt(query)
+
+    response = client.invoke_model(
+        modelId=BEDROCK_MODEL_ID,
+        body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 500,
+            "messages": [{"role": "user", "content": prompt}],
+            "tools": [tool_schema],
+            "tool_choice": {"type": "tool", "name": "research_result"},
+        }),
+    )
+
+    body = json.loads(response["body"].read())
+    tokens_in = body.get("usage", {}).get("input_tokens", "?")
+    tokens_out = body.get("usage", {}).get("output_tokens", "?")
+    logger.info(f"LLM research ({tokens_in} in / {tokens_out} out)")
+
+    # Extract tool_use block — guaranteed structured JSON
+    for block in body.get("content", []):
+        if block.get("type") == "tool_use":
+            return block["input"]
+
+    raise ValueError("No tool_use block in response")
+
+
+def recall_insight(ticker, facts, question=None):
+    """Run LLM analysis over recalled sentiment memories to identify phase changes."""
+    prompt = build_recall_insight_prompt(ticker, facts, question)
+    response = call_bedrock(prompt, max_tokens=1000)
+    return parse_response(response)
 
 
 def infer_tickers(untagged_posts, dry_run=False):
@@ -267,6 +342,8 @@ def analyze_ticker(ticker, posts, dry_run=False):
 
 
 def main():
+    from analysis.memory import store_sentiment, store_market_sentiment
+
     parser = argparse.ArgumentParser(description="Market sentiment analysis")
     parser.add_argument("--ticker", help="Analyze a single ticker")
     parser.add_argument(

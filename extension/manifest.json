@@ -3,7 +3,7 @@
   "name": "Market Sentiment Plugin",
   "version": "1.0.0",
   "description": "Save X posts with $TICKER mentions for sentiment analysis",
-  "permissions": ["activeTab"],
+  "permissions": ["activeTab", "tabs", "storage"],
   "host_permissions": [
     "<all_urls>"
   ],
@@ -20,7 +20,16 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Market Sentiment"
+    "default_title": "Market Sentiment",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
-  "icons": {}
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
 }

@@ -4,7 +4,7 @@ setup(
     name="market-sentiment-plugin",
     version="0.1.0",
     packages=find_packages(),
-    py_modules=["cli"],
+    py_modules=["msp_cli"],
     python_requires=">=3.11",
     install_requires=[
         "fastapi>=0.115.0",
@@ -14,7 +14,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "msp=cli:main",
+            "msp-cli=msp_cli:main",
         ],
     },
 )

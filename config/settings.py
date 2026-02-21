@@ -12,7 +12,11 @@ BEDROCK_MODEL_ID = os.getenv(
 # Paths
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 POSTS_FILE = os.path.join(DATA_DIR, "posts.json")
+SCAN_FILE = os.path.join(DATA_DIR, "scan.json")
+SEEN_FILE = os.path.join(DATA_DIR, "seen.json")
 SCREENSHOTS_DIR = os.path.join(DATA_DIR, "screenshots")
+PID_FILE = os.path.join(DATA_DIR, "server.pid")
+LOG_FILE = os.path.join(DATA_DIR, "server.log")
 
 # Backend
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "5050"))

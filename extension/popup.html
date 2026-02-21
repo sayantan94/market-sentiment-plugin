@@ -49,6 +49,55 @@
       cursor: pointer;
     }
     .btn:hover { opacity: 0.9; }
+    .divider {
+      border: none;
+      border-top: 1px solid #2f3336;
+      margin: 12px 0;
+    }
+    .scan-section label {
+      font-size: 12px;
+      color: #8b98a5;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .scan-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid #2f3336;
+      border-radius: 8px;
+      background: #1e2732;
+      color: #e7e9ea;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      outline: none;
+    }
+    .scan-input:focus { border-color: #1d9bf0; }
+    .scan-input::placeholder { color: #6e767d; font-weight: 400; }
+    .btn-scan {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px;
+      border: none;
+      border-radius: 20px;
+      background: #1d9bf0;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-scan:hover { opacity: 0.9; }
+    .btn-scan.stop { background: #f4212e; }
+    .btn-scan:disabled { opacity: 0.4; cursor: default; }
+    .scan-progress {
+      font-size: 12px;
+      color: #8b98a5;
+      margin-top: 6px;
+      text-align: center;
+      min-height: 16px;
+    }
   </style>
 </head>
 <body>
@@ -61,6 +110,14 @@
     <span>Saved Posts</span>
     <span class="stat-value" id="count">—</span>
   </div>
+  <hr class="divider">
+  <div class="scan-section">
+    <label>Auto-Scan Tickers</label>
+    <input type="text" class="scan-input" id="scan-ticker" placeholder="HOOD, SPY, ORCL" maxlength="30">
+    <button class="btn-scan" id="scan-btn">&#9654; Start Scan</button>
+    <div class="scan-progress" id="scan-progress"></div>
+  </div>
+  <hr class="divider">
   <button class="btn" id="clear-btn">Clear All</button>
   <script src="popup.js"></script>
 </body>

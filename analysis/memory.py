@@ -5,7 +5,7 @@ Bedrock AgentCore Memory for Market Sentiment
 import time
 import logging
 import boto3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config.settings import AWS_REGION, MEMORY_NAME, EVENT_EXPIRY_DAYS
 
@@ -205,33 +205,37 @@ def recall_sentiment(ticker, query=None):
 
 
 def _recall_events(ticker):
-    """List recent events for a ticker."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    try:
-        events_response = _client.runtime.list_events(
-            memoryId=_client.memory_id,
-            actorId=f"sentiment/{ticker}",
-            sessionId=f"sentiment-{today}",
-            maxResults=10,
-        )
+    """List events for a ticker across the last 30 days."""
+    today = datetime.now()
+    facts = []
 
-        facts = []
-        for event in events_response.get("events", []):
-            for item in event.get("payload", []):
-                text = item.get("conversational", {}).get("content", {}).get("text", "")
-                if text:
-                    facts.append(text)
+    for i in range(30):
+        day = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        session_id = f"sentiment-{day}"
+        try:
+            events_response = _client.runtime.list_events(
+                memoryId=_client.memory_id,
+                actorId=f"sentiment/{ticker}",
+                sessionId=session_id,
+                maxResults=10,
+            )
+            for event in events_response.get("events", []):
+                for item in event.get("payload", []):
+                    text = item.get("conversational", {}).get("content", {}).get("text", "")
+                    if text:
+                        facts.append(text)
+        except Exception as e:
+            logger.debug(f"{ticker}: no events for {day} - {e}")
 
-        if facts:
-            logger.info(f"{ticker}: recalled {len(facts)} events")
-        else:
-            logger.info(f"{ticker}: no events found")
+    # Sort chronologically (each fact starts with "TICKER | YYYY-MM-DD HH:MM:SS")
+    facts.sort()
 
-        return facts
+    if facts:
+        logger.info(f"{ticker}: recalled {len(facts)} events across 30 days")
+    else:
+        logger.info(f"{ticker}: no events found in last 30 days")
 
-    except Exception as e:
-        logger.warning(f"{ticker}: recall_events failed - {e}")
-        return []
+    return facts
 
 
 def _recall_semantic(ticker, query):
