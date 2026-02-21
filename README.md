@@ -14,11 +14,11 @@
 
 </div>
 
----
+
 
 > This project is for educational and research purposes only. It does not constitute financial advice. The authors accept no responsibility for any trading losses, damages, or decisions made based on the output of this tool. Use at your own risk.
 
----
+
 
 ## What It Does
 
@@ -26,7 +26,7 @@ A Chrome extension + CLI that captures social media posts from X, runs AI-powere
 
 There are **two ways to capture posts**: manually (click `$` on individual posts) or auto-scan (the extension crawls X search results hands-free).
 
----
+
 
 ## Quick Start
 
@@ -57,7 +57,7 @@ msp-cli doctor
   AWS           authenticated (account 1234...)
 ```
 
----
+
 
 ## Workflow 1: Manual Capture
 
@@ -129,7 +129,7 @@ Or ask a custom question over the history:
 msp-cli recall HOOD --ask "what are the recurring bullish catalysts?"
 ```
 
----
+
 
 ## Workflow 2: Auto-Scan from Chrome Extension
 
@@ -166,7 +166,7 @@ msp-cli recall HOOD      # see sentiment history
 msp-cli recall-market    # overall market mood
 ```
 
----
+
 
 ## Workflow 3: CLI Research (Auto-Scan via SSE)
 
@@ -205,7 +205,6 @@ msp-cli research "is nvidia overvalued"
 msp-cli analyze -t NVDA
 ```
 
----
 
 ## Sample Analysis Output
 
@@ -250,7 +249,7 @@ msp-cli analyze -t NVDA
 
 </details>
 
----
+
 
 ## CLI Reference
 
@@ -272,7 +271,7 @@ msp-cli analyze -t NVDA
 | `msp-cli recall TICKER --ask "custom question"` | Custom LLM question over history |
 | `msp-cli recall-market` | Recall overall market mood |
 
----
+
 
 ## Requirements
 
