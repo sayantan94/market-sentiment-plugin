@@ -24,7 +24,11 @@
 
 A Chrome extension + CLI that captures social media posts from X, runs AI-powered sentiment analysis via Claude on Bedrock, and persists structured insights into long-term memory for downstream trading agents.
 
-There are **two ways to capture posts**: manually (click `$` on individual posts) or auto-scan (the extension crawls X search results hands-free).
+There are **three ways to capture posts**:
+
+- **[CLI Research](#workflow-1-cli-research)**: One command does it all. Type a query like `"is nvidia overvalued"`, and the CLI figures out the tickers, tells the extension to scan X, runs sentiment analysis, and saves results to memory. Recall later to track sentiment drift over time.
+- **[Auto-Scan](#workflow-2-auto-scan-from-chrome-extension)**: Pick your own tickers in the extension popup and let it crawl X search results hands-free.
+- **[Manual Capture](#workflow-3-manual-capture)**: Click `$` on individual posts as you browse X to save them one by one.
 
 
 
@@ -59,11 +63,92 @@ msp-cli doctor
 
 
 
-## Workflow 1: Manual Capture
+## Workflow 1: CLI Research
+
+Run `msp-cli research` with any question about the market. The CLI sends your query to Claude, which figures out which tickers to search for. It then tells the Chrome extension to scan X for those tickers, collects the posts, runs sentiment analysis, and stores everything in memory.
+
+```bash
+msp-cli research "find me what does market feel about top ai companies"
+```
+```
+$ Market Sentiment · Research
+
+  Tickers:   $NVDA $MSFT $GOOGL $META $TSLA
+  Keywords:  AI stocks, artificial intelligence, AI sentiment, AI companies, tech AI
+  Reason:    Query asks about market sentiment on top AI companies. Selected the 5
+             most prominent AI-focused stocks: NVDA, MSFT, GOOGL, META, TSLA.
+
+  Scan queued, waiting for extension...
+  Scanning $NVDA   9 posts
+  Scanning $MSFT   14 posts
+  ...
+  Done! 109 posts captured.
+
+  ──────────────── Analyze ────────────────
+  $NVDA: bullish 78% (6.2s)
+  $MSFT: neutral 55% (4.8s)
+  ...
+  5 analyzed, stored in memory
+```
+
+The extension popup shows the scan queue and live progress:
+
+<p>
+  <img src="docs/research.PNG" alt="Extension popup showing scan queue during research" width="300"/>
+  <br/>
+  <em>The extension auto-populates tickers from the CLI research command and scans them one by one</em>
+</p>
+
+Use `--skip-analyze` to skip the auto-analysis step:
+
+```bash
+msp-cli research "robinhood stock" --skip-analyze
+```
+
+
+
+## Workflow 2: Auto-Scan from Chrome Extension
+
+Let the extension crawl X search results automatically, no manual clicking needed.
+
+### Step 1:Open the extension popup
+
+Click the <img src="extension/icon16.png" width="16" style="vertical-align: middle;"/> icon in Chrome's toolbar. Enter one or more tickers (e.g. `HOOD, TSM, ORCL`) and click **Start Scan**.
+
+<p>
+  <img src="docs/auto-capture.png" alt="Extension popup during auto-scan" width="300"/>
+  <br/>
+  <em>The popup shows live progress, 32/50 posts captured for $HOOD</em>
+</p>
+
+### Step 2:Extension crawls X automatically
+
+The extension will:
+1. Navigate to X search for `$HOOD`
+2. Scroll through **Top** results, saving each post + screenshot
+3. Switch to **Latest** results, continue saving
+4. Move to next ticker (`$TSM`, then `$ORCL`), repeat
+5. A blue banner at the top of X shows live progress
+
+Click **Stop Scan** at any time to stop early. Posts captured so far are kept.
+
+### Step 3:Analyze and recall
+
+Once the scan completes:
+
+```bash
+msp-cli analyze          # analyze all captured posts
+msp-cli recall HOOD      # see sentiment history
+msp-cli recall-market    # overall market mood
+```
+
+
+
+## Workflow 3: Manual Capture
 
 Save individual posts as you browse X.
 
-### Step 1 — Click `$` on a post
+### Step 1:Click `$` on a post
 
 The extension injects a **$** button into every post's action bar. Click it to save the post text, handle, timestamp, tickers, and a cropped screenshot.
 
@@ -73,7 +158,7 @@ The extension injects a **$** button into every post's action bar. Click it to s
   <em>The $ button appears in the action bar of every post on X</em>
 </p>
 
-### Step 2 — Analyze
+### Step 2:Analyze
 
 ```bash
 msp-cli analyze
@@ -87,7 +172,7 @@ msp-cli analyze
   3 analyzed, stored in memory
 ```
 
-### Step 3 — Recall
+### Step 3:Recall
 
 ```bash
 msp-cli recall HOOD
@@ -104,7 +189,7 @@ msp-cli recall HOOD
   summary: HOOD dropped 10% after revenue missed expectations...
 ```
 
-### Step 4 — Ask for insight
+### Step 4:Ask for insight
 
 Run `--ask` to have Claude analyze the full sentiment history for phase changes:
 
@@ -115,94 +200,18 @@ msp-cli recall HOOD --ask
   --- Insight ---
   Phase: transitioning  |  Confidence: falling
   Phase changes:
-    2026-02-10: bullish -> bearish — Q4 earnings miss, 10% price drop
-    2026-02-11: bearish -> bullish — ARK institutional buying, prediction markets thesis
+    2026-02-10: bullish -> bearish, Q4 earnings miss, 10% price drop
+    2026-02-11: bearish -> bullish, ARK institutional buying, prediction markets thesis
 
   Sentiment whipsawed around earnings. Bearish spike was event-driven
   but quickly offset by structural bulls citing prediction markets.
-  Outlook: Leaning bullish but low conviction — needs follow-through above $85.
+  Outlook: Leaning bullish but low conviction, needs follow-through above $85.
 ```
 
 Or ask a custom question over the history:
 
 ```bash
 msp-cli recall HOOD --ask "what are the recurring bullish catalysts?"
-```
-
-
-
-## Workflow 2: Auto-Scan from Chrome Extension
-
-Let the extension crawl X search results automatically — no manual clicking needed.
-
-### Step 1 — Open the extension popup
-
-Click the <img src="extension/icon16.png" width="16" style="vertical-align: middle;"/> icon in Chrome's toolbar. Enter one or more tickers (e.g. `HOOD, TSM, ORCL`) and click **Start Scan**.
-
-<p>
-  <img src="docs/auto-capture.png" alt="Extension popup during auto-scan" width="300"/>
-  <br/>
-  <em>The popup shows live progress — 32/50 posts captured for $HOOD</em>
-</p>
-
-### Step 2 — Extension crawls X automatically
-
-The extension will:
-1. Navigate to X search for `$HOOD`
-2. Scroll through **Top** results, saving each post + screenshot
-3. Switch to **Latest** results, continue saving
-4. Move to next ticker (`$TSM`, then `$ORCL`), repeat
-5. A blue banner at the top of X shows live progress
-
-Click **Stop Scan** at any time to stop early. Posts captured so far are kept.
-
-### Step 4 — Analyze and recall
-
-Once the scan completes:
-
-```bash
-msp-cli analyze          # analyze all captured posts
-msp-cli recall HOOD      # see sentiment history
-msp-cli recall-market    # overall market mood
-```
-
-
-
-## Workflow 3: CLI Research (Auto-Scan via SSE)
-
-The fastest path — one command does everything: LLM identifies tickers, queues a scan, extension picks it up automatically.
-
-### Step 1 — Research
-
-```bash
-msp-cli research "is nvidia overvalued"
-```
-```
-  Starting backend on :5050... ok
-  Researching: "is nvidia overvalued"
-  Tickers: $NVDA
-  Keywords: nvidia, NVDA, overvalued
-  NVDA is the primary ticker for Nvidia
-
-  Scan queued — waiting for extension to pick up...
-  Scanning $NVDA [top] — 14 posts
-  Done! 23 posts captured.
-  Next: msp-cli analyze -t NVDA
-```
-
-**What happens under the hood:**
-1. CLI auto-starts the backend daemon if needed
-2. Calls Claude (Bedrock) with structured tool_use to convert your query into tickers + keywords
-3. POSTs a scan request to the backend
-4. Extension picks up the scan via SSE (Server-Sent Events)
-5. Extension auto-navigates X, scrolls, captures posts + screenshots
-6. CLI shows real-time progress via SSE stream
-7. Press `Ctrl+C` to detach — the scan continues in the extension
-
-### Step 2 — Analyze
-
-```bash
-msp-cli analyze -t NVDA
 ```
 
 
@@ -294,14 +303,14 @@ sequenceDiagram
     participant Claude as Claude Sonnet 4.5<br/>(Bedrock)
     participant Mem as Bedrock AgentCore<br/>Memory
 
-    Note over User,X: Capture — Manual or Auto-Scan
+    Note over User,X: Capture: Manual or Auto-Scan
 
     User->>Ext: Click $ on post (manual)
     Ext->>API: POST /save {text, screenshot, tickers}
     API->>FS: Append to posts.json
 
     User->>CLI: msp-cli research "query" (auto)
-    CLI->>Claude: Convert query → tickers (tool_use)
+    CLI->>Claude: Convert query → tickers (structured output)
     CLI->>API: POST /scan {tickers, keywords}
     API-->>Ext: SSE: scan pending
     Ext->>X: Auto-navigate, scroll, capture
