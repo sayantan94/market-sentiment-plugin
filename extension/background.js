@@ -5,6 +5,67 @@
  */
 
 let savedCount = 0;
+let scanPollTimer = null;
+
+// Poll backend for pending scans every 2 seconds
+function startScanPolling() {
+  if (scanPollTimer) return;
+  scanPollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch("http://localhost:5050/scan");
+      const scan = await resp.json();
+      
+      if (scan.status === "pending") {
+        // Pick up the scan
+        clearInterval(scanPollTimer);
+        scanPollTimer = null;
+        
+        // Check if scan already active
+        chrome.storage.local.get("mspScan", (result) => {
+          if (result.mspScan && result.mspScan.active) {
+            console.log("Scan already active, ignoring pending scan");
+            startScanPolling(); // Resume polling
+            return;
+          }
+          
+          // Start the scan
+          const tickerList = Array.isArray(scan.tickers) ? scan.tickers : [scan.tickers];
+          const maxPosts = scan.maxPosts || 50;
+          const perTicker = Math.max(Math.floor(maxPosts / tickerList.length), 4);
+          const perTab = Math.ceil(perTicker / 2);
+
+          const scanState = {
+            active: true,
+            tickers: tickerList,
+            tickerIndex: 0,
+            currentTicker: tickerList[0],
+            maxPosts,
+            perTicker,
+            perTab,
+            totalCount: 0,
+            count: 0,
+            phase: "top",
+          };
+          
+          chrome.storage.local.set({ mspScan: scanState }, () => {
+            // Update backend status to running
+            fetch("http://localhost:5050/scan", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "running" }),
+            }).catch(() => {});
+            startNextTicker();
+          });
+        });
+      }
+    } catch (e) {
+      // Backend offline, keep polling
+    }
+  }, 2000);
+}
+
+// Start polling on extension load
+startScanPolling();
 
 function navigateAndStartScan(url, ticker, maxPosts) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -38,6 +99,7 @@ function startNextTicker() {
       savedCount += s.totalCount || 0;
       chrome.action.setBadgeText({ text: savedCount > 0 ? String(savedCount) : "" });
       chrome.action.setBadgeBackgroundColor({ color: "#00ba7c" });
+      startScanPolling(); // Resume polling for next scan
       return;
     }
 
@@ -143,6 +205,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       });
       chrome.action.setBadgeText({ text: savedCount > 0 ? String(savedCount) : "" });
+      startScanPolling(); // Resume polling
     });
     sendResponse({ ok: true });
     return true;

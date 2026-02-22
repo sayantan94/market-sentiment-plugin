@@ -303,6 +303,9 @@ async function scanLoop() {
 function startScan(ticker, maxPosts, resumeCount) {
   if (scanning) return;
 
+function startScan(ticker, maxPosts, resumeCount) {
+  if (scanning) return;
+
   // Fallback: extract ticker from X search URL if not provided
   if (!ticker) {
     const urlMatch = decodeURIComponent(window.location.search).match(/q=\$([A-Z]{1,5})\b/i);
@@ -311,9 +314,11 @@ function startScan(ticker, maxPosts, resumeCount) {
   if (!ticker) return; // still nothing, bail out
 
   scanning = true;
-  scanCount = resumeCount || 0;
+  // Don't use resumeCount for scanCount - each phase starts fresh
+  // resumeCount is just for display/tracking total across phases
+  scanCount = 0;
   scanTicker = ticker;
-  scanMaxPosts = (resumeCount || 0) + (maxPosts || 50);
+  scanMaxPosts = maxPosts || 50;
 
   scanBanner = createScanBanner(ticker);
   updateScanBanner();
@@ -343,8 +348,10 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "start_scan") {
     // Get current count from storage for phase resumption
     chrome.storage.local.get("mspScan", (result) => {
-      const resumeCount = result.mspScan ? result.mspScan.count || 0 : 0;
-      startScan(msg.ticker, msg.maxPosts, resumeCount);
+      const s = result.mspScan;
+      const resumeCount = s ? s.totalCount || 0 : 0;
+      const ticker = msg.ticker || (s ? s.currentTicker || s.tickers?.[s.tickerIndex] : "");
+      startScan(ticker, msg.maxPosts, resumeCount);
     });
   }
   if (msg.type === "stop_scan") {
@@ -355,7 +362,13 @@ chrome.runtime.onMessage.addListener((msg) => {
 // On load: resume scan if one was active (e.g. page re-inject after navigation)
 chrome.storage.local.get("mspScan", (result) => {
   if (result.mspScan && result.mspScan.active) {
-    startScan(result.mspScan.currentTicker, result.mspScan.perTab);
+    const s = result.mspScan;
+    const resumeCount = s.totalCount || 0;
+    const ticker = s.currentTicker || s.tickers?.[s.tickerIndex] || "";
+    const maxPosts = s.perTab || 25;
+    
+    console.log(`[MSP] Resuming scan: ${ticker}, count=${resumeCount}, maxPosts=${maxPosts}`);
+    startScan(ticker, maxPosts, resumeCount);
   }
 });
 
