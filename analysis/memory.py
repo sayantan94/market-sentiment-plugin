@@ -127,6 +127,7 @@ def store_sentiment(ticker, sentiment_result, post_times=None):
     )
 
     try:
+        logger.info(f"Memory → store {ticker} session=sentiment-{today}")
         _client.runtime.create_event(
             memoryId=_client.memory_id,
             actorId=f"sentiment/{ticker}",
@@ -139,9 +140,9 @@ def store_sentiment(ticker, sentiment_result, post_times=None):
                 }
             }],
         )
-        logger.info(f"{ticker}: stored sentiment ({direction} {confidence}%) at {analysis_time}")
+        logger.info(f"Memory ✓ {ticker}: {direction} {confidence}%")
     except Exception as e:
-        logger.warning(f"{ticker}: store_sentiment failed - {e}")
+        logger.warning(f"Memory ✗ {ticker}: {e}")
 
 
 def store_market_sentiment(sentiment_result, post_times=None):
@@ -176,6 +177,7 @@ def store_market_sentiment(sentiment_result, post_times=None):
     )
 
     try:
+        logger.info(f"Memory → store MARKET session=sentiment-{today}")
         _client.runtime.create_event(
             memoryId=_client.memory_id,
             actorId="sentiment/MARKET",
@@ -188,9 +190,9 @@ def store_market_sentiment(sentiment_result, post_times=None):
                 }
             }],
         )
-        logger.info(f"MARKET: stored overall sentiment ({direction} {confidence}%) at {analysis_time}")
+        logger.info(f"Memory ✓ MARKET: {direction} {confidence}%")
     except Exception as e:
-        logger.warning(f"MARKET: store_market_sentiment failed - {e}")
+        logger.warning(f"Memory ✗ MARKET: {e}")
 
 
 def recall_sentiment(ticker, query=None):
@@ -208,7 +210,9 @@ def _recall_events(ticker):
     """List events for a ticker across the last 30 days."""
     today = datetime.now()
     facts = []
+    days_with_data = 0
 
+    logger.info(f"Memory → recall {ticker} (30 days)")
     for i in range(30):
         day = (today - timedelta(days=i)).strftime("%Y-%m-%d")
         session_id = f"sentiment-{day}"
@@ -219,22 +223,20 @@ def _recall_events(ticker):
                 sessionId=session_id,
                 maxResults=10,
             )
+            day_facts = []
             for event in events_response.get("events", []):
                 for item in event.get("payload", []):
                     text = item.get("conversational", {}).get("content", {}).get("text", "")
                     if text:
-                        facts.append(text)
+                        day_facts.append(text)
+            if day_facts:
+                days_with_data += 1
+                facts.extend(day_facts)
         except Exception as e:
             logger.debug(f"{ticker}: no events for {day} - {e}")
 
-    # Sort chronologically (each fact starts with "TICKER | YYYY-MM-DD HH:MM:SS")
     facts.sort()
-
-    if facts:
-        logger.info(f"{ticker}: recalled {len(facts)} events across 30 days")
-    else:
-        logger.info(f"{ticker}: no events found in last 30 days")
-
+    logger.info(f"Memory ✓ {ticker}: {len(facts)} events from {days_with_data} days")
     return facts
 
 

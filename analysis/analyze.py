@@ -146,7 +146,7 @@ def call_bedrock(messages_content, max_tokens=20000):
     text = body["content"][0]["text"]
     tokens_in = body.get("usage", {}).get("input_tokens", "?")
     tokens_out = body.get("usage", {}).get("output_tokens", "?")
-    logger.info(f"LLM ({tokens_in} in / {tokens_out} out):\n{text}")
+    logger.info(f"Bedrock [{BEDROCK_MODEL_ID}] {tokens_in} in → {tokens_out} out")
     return text
 
 
@@ -204,7 +204,7 @@ def research_query(query):
     body = json.loads(response["body"].read())
     tokens_in = body.get("usage", {}).get("input_tokens", "?")
     tokens_out = body.get("usage", {}).get("output_tokens", "?")
-    logger.info(f"LLM research ({tokens_in} in / {tokens_out} out)")
+    logger.info(f"Bedrock [{BEDROCK_MODEL_ID}] tool_use  {tokens_in} in → {tokens_out} out")
 
     # Extract tool_use block — guaranteed structured JSON
     for block in body.get("content", []):
