@@ -4,7 +4,7 @@
 
 # Market Sentiment
 
-**Capture posts from X. Run AI sentiment analysis. Feed your trading agents.**
+**Capture posts from X. Run AI sentiment analysis. Feed your agents.**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Claude Sonnet](https://img.shields.io/badge/LLM-Claude%20Sonnet%204.5-blueviolet.svg)](https://docs.anthropic.com/)
@@ -22,7 +22,7 @@
 
 ## What It Does
 
-A Chrome extension + CLI that captures social media posts from X, runs AI-powered sentiment analysis via Claude on Bedrock, and persists structured insights into long-term memory for downstream trading agents.
+A Chrome extension + CLI that captures social media posts from X, runs AI-powered sentiment analysis via LLM, and persists structured insights into long-term memory for downstream trading agents.
 
 There are **three ways to capture posts**:
 
@@ -191,7 +191,7 @@ msp-cli recall HOOD
 
 ### Step 4:Ask for insight
 
-Run `--ask` to have Claude analyze the full sentiment history for phase changes:
+Run `--ask` to have LLM analyze the full sentiment history for phase changes:
 
 ```bash
 msp-cli recall HOOD --ask
