@@ -7,6 +7,9 @@ const clearBtn = document.getElementById("clear-btn");
 const scanTickerInput = document.getElementById("scan-ticker");
 const scanBtn = document.getElementById("scan-btn");
 const scanProgress = document.getElementById("scan-progress");
+const queueSection = document.getElementById("queue-section");
+const queueItems = document.getElementById("queue-items");
+const queueDivider = document.getElementById("queue-divider");
 
 let scanActive = false;
 let scanPollInterval = null;
@@ -53,6 +56,65 @@ function setScanUI(active, tickerDisplay, count, maxPosts, currentTicker) {
   }
 }
 
+async function renderQueue() {
+  try {
+    const resp = await fetch(`${API_URL}/scan`);
+    if (!resp.ok) return;
+    const scan = await resp.json();
+
+    if (!scan || scan.status === "none" || !scan.tickers || scan.tickers.length === 0) {
+      queueSection.style.display = "none";
+      queueDivider.style.display = "none";
+      return;
+    }
+
+    queueSection.style.display = "";
+    queueDivider.style.display = "";
+
+    // Get active scan state from chrome storage for per-ticker progress
+    const storage = await chrome.storage.local.get("mspScan");
+    const msp = storage.mspScan || {};
+    const currentTicker = msp.currentTicker || scan.currentTicker || "";
+    const tickerIndex = msp.tickerIndex || 0;
+    const phase = msp.phase || scan.phase || "";
+    const count = msp.totalCount || scan.count || 0;
+
+    let html = "";
+    const tickers = scan.tickers || [];
+    for (let i = 0; i < tickers.length; i++) {
+      const t = tickers[i];
+      let statusText = "";
+      let tickerClass = "";
+      let statusClass = "";
+
+      if (scan.status === "done") {
+        statusText = "done";
+        tickerClass = "done";
+      } else if (t === currentTicker) {
+        const phaseLabel = phase === "latest" ? "Latest" : "Top";
+        statusText = `scanning ${phaseLabel}… ${count}`;
+        tickerClass = "active";
+        statusClass = "active";
+      } else if (msp.active && i < tickerIndex) {
+        statusText = "done";
+        tickerClass = "done";
+      } else {
+        statusText = "queued";
+      }
+
+      html += `<div class="queue-item">
+        <span class="queue-ticker ${tickerClass}">$${t}</span>
+        <span class="queue-status ${statusClass}">${statusText}</span>
+      </div>`;
+    }
+    queueItems.innerHTML = html;
+  } catch {
+    // backend offline
+    queueSection.style.display = "none";
+    queueDivider.style.display = "none";
+  }
+}
+
 function startScanPolling() {
   if (scanPollInterval) return;
   scanPollInterval = setInterval(() => {
@@ -65,6 +127,7 @@ function startScanPolling() {
         stopScanPolling();
       }
     });
+    renderQueue();
   }, 1000);
 }
 
@@ -107,7 +170,7 @@ clearBtn.addEventListener("click", async () => {
   }
 });
 
-// Init: check for active scan
+// Init: check for active scan + render queue
 chrome.storage.local.get("mspScan", (result) => {
   if (result.mspScan && result.mspScan.active) {
     const s = result.mspScan;
@@ -117,3 +180,4 @@ chrome.storage.local.get("mspScan", (result) => {
 });
 
 refresh();
+renderQueue();

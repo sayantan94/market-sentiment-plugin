@@ -302,6 +302,14 @@ async function scanLoop() {
 
 function startScan(ticker, maxPosts, resumeCount) {
   if (scanning) return;
+
+  // Fallback: extract ticker from X search URL if not provided
+  if (!ticker) {
+    const urlMatch = decodeURIComponent(window.location.search).match(/q=\$([A-Z]{1,5})\b/i);
+    if (urlMatch) ticker = urlMatch[1].toUpperCase();
+  }
+  if (!ticker) return; // still nothing, bail out
+
   scanning = true;
   scanCount = resumeCount || 0;
   scanTicker = ticker;
@@ -358,11 +366,20 @@ chrome.storage.local.get("mspScan", (result) => {
   async function checkScan() {
     if (scanning) return; // already scanning, skip
     try {
+      // Don't re-trigger if background already has an active scan
+      const storage = await chrome.storage.local.get("mspScan");
+      if (storage.mspScan && storage.mspScan.active) return;
+
       const resp = await fetch(`${API_URL}/scan`);
       if (!resp.ok) return;
       const scan = await resp.json();
       if (scan.status === "pending") {
-        patchScan({ status: "running" });
+        // Await the PATCH so it completes before navigation kills this script
+        await fetch(`${API_URL}/scan`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "running" }),
+        });
         const tickers = scan.tickers || [];
         const maxPosts = scan.maxPosts || 50;
         chrome.runtime.sendMessage({ type: "start_scan", tickers, maxPosts });

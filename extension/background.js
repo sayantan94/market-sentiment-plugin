@@ -77,27 +77,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // --- Scan mode ---
 
   if (msg.type === "start_scan") {
-    const { tickers, maxPosts } = msg;
-    const tickerList = Array.isArray(tickers) ? tickers : [tickers];
-    const perTicker = Math.max(Math.floor((maxPosts || 50) / tickerList.length), 4);
-    const perTab = Math.ceil(perTicker / 2);
+    // Guard: don't re-initialize if a scan is already running
+    chrome.storage.local.get("mspScan", (result) => {
+      if (result.mspScan && result.mspScan.active) {
+        sendResponse({ ok: true, already_active: true });
+        return;
+      }
 
-    const scanState = {
-      active: true,
-      tickers: tickerList,
-      tickerIndex: 0,
-      currentTicker: tickerList[0],
-      maxPosts: maxPosts || 50,
-      perTicker,
-      perTab,
-      totalCount: 0,
-      count: 0,        // count for current ticker phase
-      phase: "top",
-    };
-    chrome.storage.local.set({ mspScan: scanState }, () => {
-      startNextTicker();
+      const { tickers, maxPosts } = msg;
+      const tickerList = Array.isArray(tickers) ? tickers : [tickers];
+      const perTicker = Math.max(Math.floor((maxPosts || 50) / tickerList.length), 4);
+      const perTab = Math.ceil(perTicker / 2);
+
+      const scanState = {
+        active: true,
+        tickers: tickerList,
+        tickerIndex: 0,
+        currentTicker: tickerList[0],
+        maxPosts: maxPosts || 50,
+        perTicker,
+        perTab,
+        totalCount: 0,
+        count: 0,        // count for current ticker phase
+        phase: "top",
+      };
+      chrome.storage.local.set({ mspScan: scanState }, () => {
+        startNextTicker();
+      });
+      sendResponse({ ok: true });
     });
-    sendResponse({ ok: true });
     return true;
   }
 
