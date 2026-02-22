@@ -12,3 +12,4 @@ data/server.log
 *.egg-info/
 dist/
 build/
+*.mov
