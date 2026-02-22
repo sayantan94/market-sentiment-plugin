@@ -209,7 +209,8 @@ def cmd_serve(args):
     uvicorn.run("backend.server:app", host="0.0.0.0", port=port, reload=args.reload)
 
 
-def cmd_analyze(args):
+def _run_analyze(ticker_filter=None, dry_run=False):
+    """Core analyze logic. Returns True if results were produced."""
     from analysis.analyze import (
         load_posts, group_by_ticker, analyze_ticker,
         infer_tickers, analyze_market, archive_posts,
@@ -217,19 +218,17 @@ def cmd_analyze(args):
     from analysis.memory import store_sentiment, store_market_sentiment
     from config.settings import POSTS_FILE
 
-    _header("Analyze")
-
     posts = load_posts()
     if not posts:
-        console.print("  No posts. Browse X and click $ to save.", style="dim")
-        return
+        console.print("  No posts to analyze.", style="dim")
+        return False
 
     tagged = [p for p in posts if p.get("tickers")]
     untagged = [p for p in posts if not p.get("tickers")]
     console.print(f"  {len(posts)} posts ({len(tagged)} tagged, {len(untagged)} untagged)")
 
     # Infer tickers
-    if untagged and not args.dry_run:
+    if untagged and not dry_run:
         with console.status(f"Inferring tickers for {len(untagged)} untagged posts...", spinner="dots"):
             t0 = time.time()
             inferred = infer_tickers(untagged)
@@ -241,12 +240,12 @@ def cmd_analyze(args):
         console.print(f"  Inferred {len(inferred)} tickers ({dur:.1f}s)", style="dim")
 
     groups = group_by_ticker(tagged)
-    if args.ticker:
-        t = args.ticker.upper()
+    if ticker_filter:
+        t = ticker_filter.upper()
         groups = {t: groups[t]} if t in groups else {}
     if not groups:
         console.print("  No tickers to analyze.", style="dim")
-        return
+        return False
 
     ticker_summary = " ".join(f"[bold cyan]${t}[/]({len(p)})" for t, p in groups.items())
     console.print(f"  Tickers: {ticker_summary}")
@@ -257,7 +256,7 @@ def cmd_analyze(args):
     for ticker, ticker_posts in groups.items():
         if ticker == "MARKET":
             continue
-        if args.dry_run:
+        if dry_run:
             console.print(f"  ${ticker}: [yellow]dry run[/]")
             continue
 
@@ -284,7 +283,7 @@ def cmd_analyze(args):
             console.print(f"  [red]✗[/] ${ticker}  [red]failed[/]  [dim]({dur:.1f}s)[/]")
 
     # Market
-    if not args.ticker and not args.dry_run:
+    if not ticker_filter and not dry_run:
         with console.status("Analyzing overall market...", spinner="dots"):
             t0 = time.time()
             mr = analyze_market(posts)
@@ -298,22 +297,24 @@ def cmd_analyze(args):
             console.print(f"  [green]✓[/] MARKET  [{style}]{s} {c}%[/]  risk={mr.get('risk_appetite', '?')}  [dim]({dur:.1f}s)[/]")
             results.append({**mr, "ticker": "MARKET"})
 
-    # Results table
+    # Results
     if results:
         console.print()
-        tbl = Table(box=box.ROUNDED, title="Results", title_style="bold")
+        console.rule("[bold]Results[/]", style="dim")
+        console.print()
+
+        # Compact summary table
+        tbl = Table(box=box.SIMPLE_HEAVY, padding=(0, 1))
         tbl.add_column("Ticker", style="cyan bold")
         tbl.add_column("Sentiment")
         tbl.add_column("Conf", justify="right")
         tbl.add_column("Posts", justify="right")
-        tbl.add_column("Themes")
-        tbl.add_column("Summary", max_width=40)
+        tbl.add_column("Themes", max_width=40)
 
         for r in results:
             s = r.get("sentiment", "?")
             style = SENTIMENT_STYLE.get(s, "")
             themes = ", ".join(r.get("themes", [])[:3])
-            summary = r.get("summary", "")[:80]
             ss = r.get("screenshots_analyzed", 0)
             posts_label = str(r.get("post_count", 0))
             if ss:
@@ -324,16 +325,61 @@ def cmd_analyze(args):
                 f"{r.get('confidence', '?')}%",
                 posts_label,
                 themes,
-                Text(summary, style="dim"),
             )
 
         console.print(tbl)
+
+        # Detailed per-ticker breakdown
+        console.print()
+        for r in results:
+            ticker = r.get("ticker", "?")
+            s = r.get("sentiment", "?")
+            style = SENTIMENT_STYLE.get(s, "")
+
+            detail = Text()
+            # Summary
+            summary = r.get("summary", "")
+            if summary:
+                detail.append(summary + "\n", style="")
+
+            # Reasoning
+            reasoning = r.get("reasoning", "")
+            if reasoning:
+                detail.append(f"\n{reasoning}\n", style="dim")
+
+            # Key levels & catalysts
+            levels = r.get("key_levels", "")
+            catalysts = r.get("catalysts", [])
+            if levels:
+                detail.append(f"\nLevels: {levels}\n", style="bold")
+            if catalysts:
+                detail.append(f"Catalysts: {', '.join(catalysts)}\n", style="bold")
+
+            # Visual insights
+            visual = r.get("visual_insights", "")
+            if visual:
+                detail.append(f"Charts: {visual}\n", style="dim italic")
+
+            console.print(Panel(
+                detail,
+                title=f"[cyan bold]${ticker}[/] [{style}]{s} {r.get('confidence', '?')}%[/]",
+                border_style="dim",
+                padding=(0, 1),
+            ))
 
         # Archive
         archive_posts(posts)
         with open(POSTS_FILE, "w") as f:
             json.dump([], f)
-        console.print(f"\n  [green]{len(results)} analyzed[/], archived, stored in memory")
+        console.print(f"  [green]{len(results)} analyzed[/], archived, stored in memory")
+        return True
+
+    return False
+
+
+def cmd_analyze(args):
+    _header("Analyze")
+    _run_analyze(ticker_filter=args.ticker, dry_run=args.dry_run)
 
 
 def cmd_status(args):
@@ -551,7 +597,8 @@ def cmd_research(args):
     console.print("  Scan queued — waiting for extension...")
     console.print("  [dim](Ctrl+C to detach, scan continues in extension)[/]\n")
 
-    # 4. SSE stream
+    # 4. SSE stream for scan progress
+    scan_done = False
     try:
         sse_req = urllib.request.Request(f"{base}/scan/stream")
         sse_req.add_header("Accept", "text/event-stream")
@@ -580,9 +627,7 @@ def cmd_research(args):
                 console.print(f"  [cyan]Scanning ${current}{phase_label} — {count} posts[/]   ", end="\r")
             elif status == "done":
                 console.print(f"\n  [green]Done! {count} posts captured.[/]")
-                if tickers:
-                    cmds = " ".join(f"msp-cli analyze -t {t}" for t in tickers[:2])
-                    console.print(f"  Next: [dim]{cmds}[/]")
+                scan_done = True
                 break
             elif status in ("error", "none"):
                 if status == "error":
@@ -595,6 +640,13 @@ def cmd_research(args):
         console.print(f"\n  [dim]Detached — scan continues in extension.[/]")
     except Exception as e:
         console.print(f"  SSE stream error: {e}", style="red")
+
+    # 5. Auto-analyze after scan completes
+    if scan_done and not args.skip_analyze:
+        console.print()
+        console.rule("[bold]Analyze[/]", style="dim")
+        console.print()
+        _run_analyze()
 
 
 def cmd_recall_market(args):
@@ -646,6 +698,7 @@ def main():
     s.add_argument("query", help="Natural language query (e.g. 'robinhood stock')")
     s.add_argument("-n", "--max-posts", type=int, default=50)
     s.add_argument("-p", "--port", type=int)
+    s.add_argument("--skip-analyze", action="store_true", help="Skip auto-analyze after scan")
 
     s = sub.add_parser("status", help="Backend health")
     s.add_argument("-p", "--port", type=int)

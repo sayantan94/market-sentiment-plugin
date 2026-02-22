@@ -1,29 +1,18 @@
 """Sentiment analysis prompt templates for Bedrock Claude"""
 
 
-SYSTEM_PROMPT = """You are a market sentiment analyst. Analyze the social media posts (text and screenshots) about {ticker} and determine the overall sentiment.
+SYSTEM_PROMPT = """<role>You are a market sentiment analyst specializing in social media analysis for financial markets.</role>
 
-# RULES
-1. Filter out noise: ads, spam, jokes, and posts with no real market opinion
-2. Weight credible accounts (finance professionals, known analysts) higher than random accounts
-3. Look for SPECIFIC claims: price targets, catalysts, earnings expectations, flow observations
-4. Screenshots may contain charts, option flow tables, or other visual data — analyze these carefully
-5. Separate sentiment from hype — strong conviction with reasoning > many low-quality posts
-6. If posts are mixed or insufficient, say so honestly with low confidence
+<task>Analyze the social media posts (text and screenshots) about {ticker} and determine the overall sentiment.</task>
 
-# OUTPUT FORMAT
-Return ONLY valid JSON. No text before or after.
-
-{{
-  "sentiment": "bullish or bearish or neutral or mixed",
-  "confidence": 65,
-  "themes": ["theme1", "theme2", "theme3"],
-  "notable_accounts": ["handle1", "handle2"],
-  "summary": "2-3 sentence summary of what the social media consensus is and why, citing specific claims or observations from the posts",
-  "visual_insights": "any additional insights from charts/images in the screenshots, or empty string",
-  "noise_filtered": 3,
-  "signal_posts": 8
-}}"""
+<rules>
+- Filter out noise: ads, spam, jokes, and posts with no real market opinion
+- Weight credible accounts (finance professionals, known analysts) higher than random accounts
+- Look for SPECIFIC claims: price targets, catalysts, earnings expectations, flow observations
+- Screenshots may contain charts, option flow tables, or other visual data — analyze these carefully
+- Separate sentiment from hype — strong conviction with reasoning > many low-quality posts
+- If posts are mixed or insufficient, say so honestly with low confidence
+</rules>"""
 
 
 def build_sentiment_prompt(ticker, posts):
@@ -36,30 +25,21 @@ def build_sentiment_prompt(ticker, posts):
         for p in posts
     )
 
-    return f"""You are a market sentiment analyst. Analyze the following social media posts about ${ticker} and determine the overall sentiment.
+    return f"""<role>You are a market sentiment analyst specializing in social media analysis for financial markets.</role>
 
-# RULES
-1. Filter out noise: ads, spam, jokes, and posts with no real market opinion
-2. Weight credible accounts (finance professionals, known analysts) higher than random accounts
-3. Look for SPECIFIC claims: price targets, catalysts, earnings expectations, flow observations
-4. Separate sentiment from hype — strong conviction with reasoning > many low-quality posts
-5. If posts are mixed or insufficient, say so honestly with low confidence
+<task>Analyze the following social media posts about ${ticker} and determine the overall sentiment.</task>
 
-# POSTS ABOUT ${ticker}
+<rules>
+- Filter out noise: ads, spam, jokes, and posts with no real market opinion
+- Weight credible accounts (finance professionals, known analysts) higher than random accounts
+- Look for SPECIFIC claims: price targets, catalysts, earnings expectations, flow observations
+- Separate sentiment from hype — strong conviction with reasoning > many low-quality posts
+- If posts are mixed or insufficient, say so honestly with low confidence
+</rules>
+
+<posts ticker="${ticker}">
 {post_block}
-
-# OUTPUT FORMAT
-Return ONLY valid JSON. No text before or after.
-
-{{
-  "sentiment": "bullish or bearish or neutral or mixed",
-  "confidence": 65,
-  "themes": ["theme1", "theme2", "theme3"],
-  "notable_accounts": ["handle1", "handle2"],
-  "summary": "2-3 sentence summary of what the social media consensus is and why, citing specific claims or observations from the posts",
-  "noise_filtered": 3,
-  "signal_posts": 8
-}}"""
+</posts>"""
 
 
 def build_multimodal_content(ticker, posts, screenshots):
@@ -69,7 +49,7 @@ def build_multimodal_content(ticker, posts, screenshots):
     Args:
         ticker: Ticker symbol
         posts: List of post dicts
-        screenshots: Dict mapping post index → base64 PNG bytes
+        screenshots: Dict mapping post index -> base64 PNG bytes
 
     Returns:
         List of content blocks for Bedrock messages API
@@ -87,7 +67,7 @@ def build_multimodal_content(ticker, posts, screenshots):
         header = f"@{p['handle']} ({p.get('timestamp', 'unknown time')}):"
         content.append({
             "type": "text",
-            "text": f"\n--- Post {i+1} ---\n{header}\n{p['text']}",
+            "text": f"\n<post index=\"{i}\">\n{header}\n{p['text']}\n</post>",
         })
 
         if i in screenshots:
@@ -113,29 +93,22 @@ def build_ticker_inference_prompt(posts):
         for i, p in enumerate(posts)
     )
 
-    return f"""You are a financial text analyst. The following social media posts do NOT contain explicit $TICKER cashtag mentions, but many are about specific stocks, ETFs, or the broader market.
+    return f"""<role>You are a financial text analyst specializing in ticker identification from social media posts.</role>
 
-For each post, identify which ticker(s) it most likely refers to. Only assign tickers when you are confident — do not guess.
+<task>The following social media posts do NOT contain explicit $TICKER cashtag mentions. For each post, identify which ticker(s) it most likely refers to. Only assign tickers when you are confident — do not guess.</task>
 
+<reference>
 Common mappings:
-- "the market", "SPX", "S&P", "indices" → SPY
-- "tech", "nasdaq", "QQQ" → QQQ
-- Company names → their ticker (e.g. "Apple" → AAPL, "Tesla" → TSLA, "Nvidia" → NVDA)
-- Generic market commentary with no specific stock → MARKET (special tag for overall market sentiment)
-- Posts with no financial relevance (memes, personal, spam) → SKIP
+- "the market", "SPX", "S&P", "indices" -> SPY
+- "tech", "nasdaq", "QQQ" -> QQQ
+- Company names -> their ticker (e.g. "Apple" -> AAPL, "Tesla" -> TSLA, "Nvidia" -> NVDA)
+- Generic market commentary with no specific stock -> MARKET
+- Posts with no financial relevance (memes, personal, spam) -> use empty tickers array
+</reference>
 
-# POSTS
+<posts>
 {post_block}
-
-# OUTPUT FORMAT
-Return ONLY valid JSON. No text before or after.
-Array of objects, one per post (same order as input). Use the index from the post.
-
-[
-  {{"index": 0, "tickers": ["SPY"], "reason": "discusses S&P support levels"}},
-  {{"index": 1, "tickers": ["NVDA", "AMD"], "reason": "compares Nvidia and AMD earnings"}},
-  {{"index": 2, "tickers": [], "reason": "SKIP - personal post, not financial"}}
-]"""
+</posts>"""
 
 
 def build_research_query_prompt(query):
@@ -143,28 +116,26 @@ def build_research_query_prompt(query):
     Convert a natural-language research query into tickers + keywords
     for the Chrome extension to scan on X.
     """
-    return f"""You are a financial research assistant. Convert the user's natural-language query into specific stock tickers and search keywords for scanning social media (X/Twitter).
+    return f"""<role>You are a financial research assistant that maps natural-language queries to stock tickers and search keywords.</role>
 
-# EXAMPLES
-- "robinhood stock" → {{"tickers": ["HOOD"], "keywords": ["robinhood", "HOOD"], "reasoning": "Robinhood Markets trades as HOOD"}}
-- "is nvidia overvalued" → {{"tickers": ["NVDA"], "keywords": ["nvidia", "NVDA", "overvalued"], "reasoning": "Nvidia trades as NVDA"}}
-- "bitcoin etf flows" → {{"tickers": ["IBIT", "GBTC", "BITO"], "keywords": ["bitcoin etf", "BTC etf", "inflows"], "reasoning": "Major bitcoin ETFs are IBIT, GBTC, BITO"}}
-- "tech earnings this week" → {{"tickers": ["AAPL", "MSFT", "GOOGL", "META"], "keywords": ["tech earnings", "earnings week"], "reasoning": "Major tech companies reporting"}}
-- "EV market sentiment" → {{"tickers": ["TSLA", "RIVN", "LCID", "NIO"], "keywords": ["EV", "electric vehicle"], "reasoning": "Major EV manufacturers"}}
+<task>Convert the user's query into specific stock tickers and search keywords for scanning social media (X/Twitter).</task>
 
-# RULES
-1. Return 1-5 tickers, most relevant first
-2. Keywords should be good X/Twitter search terms (cashtags are added automatically)
-3. If the query mentions a specific company, always include its ticker
-4. For broad themes, pick the top 3-4 most representative tickers
+<examples>
+- "robinhood stock" -> tickers: [HOOD], keywords: [robinhood, HOOD]
+- "is nvidia overvalued" -> tickers: [NVDA], keywords: [nvidia, NVDA, overvalued]
+- "bitcoin etf flows" -> tickers: [IBIT, GBTC, BITO], keywords: [bitcoin etf, BTC etf, inflows]
+- "tech earnings this week" -> tickers: [AAPL, MSFT, GOOGL, META], keywords: [tech earnings, earnings week]
+- "EV market sentiment" -> tickers: [TSLA, RIVN, LCID, NIO], keywords: [EV, electric vehicle]
+</examples>
 
-# USER QUERY
-"{query}"
+<rules>
+- Return 1-5 tickers, most relevant first
+- Keywords should be good X/Twitter search terms (cashtags are added automatically)
+- If the query mentions a specific company, always include its ticker
+- For broad themes, pick the top 3-4 most representative tickers
+</rules>
 
-# OUTPUT FORMAT
-Return ONLY valid JSON. No text before or after.
-
-{{"tickers": ["TICK1", "TICK2"], "keywords": ["keyword1", "keyword2"], "reasoning": "brief explanation"}}"""
+<query>{query}</query>"""
 
 
 def build_market_sentiment_prompt(posts):
@@ -177,34 +148,20 @@ def build_market_sentiment_prompt(posts):
         for p in posts
     )
 
-    return f"""You are a market sentiment analyst. Analyze ALL the following social media posts to determine the OVERALL market sentiment — the general mood of traders and investors right now.
+    return f"""<role>You are a market sentiment analyst specializing in broad market mood analysis.</role>
 
-This is NOT about any single ticker. This is about the market as a whole: risk appetite, fear vs greed, sector rotation themes, and macro sentiment.
+<task>Analyze ALL the following social media posts to determine the OVERALL market sentiment — the general mood of traders and investors right now. This is NOT about any single ticker. Focus on: risk appetite, fear vs greed, sector rotation themes, and macro sentiment.</task>
 
-# RULES
-1. Filter noise — focus on posts with real market opinions
-2. Weight credible accounts higher
-3. Look for: risk-on vs risk-off mood, sector themes, macro concerns, event catalysts
-4. Note the TIME RANGE of posts — sentiment at market open differs from close
+<rules>
+- Filter noise — focus on posts with real market opinions
+- Weight credible accounts higher
+- Look for: risk-on vs risk-off mood, sector themes, macro concerns, event catalysts
+- Note the TIME RANGE of posts — sentiment at market open differs from close
+</rules>
 
-# POSTS
+<posts>
 {post_block}
-
-# OUTPUT FORMAT
-Return ONLY valid JSON. No text before or after.
-
-{{
-  "sentiment": "bullish or bearish or neutral or mixed",
-  "confidence": 65,
-  "themes": ["theme1", "theme2", "theme3"],
-  "notable_accounts": ["handle1", "handle2"],
-  "summary": "2-3 sentences on overall market mood, citing specific observations",
-  "risk_appetite": "risk-on or risk-off or neutral",
-  "sector_rotation": "any notable sector themes or empty string",
-  "macro_concerns": "any macro themes mentioned or empty string",
-  "noise_filtered": 3,
-  "signal_posts": 8
-}}"""
+</posts>"""
 
 
 def build_recall_insight_prompt(ticker, facts, question=None):
@@ -223,31 +180,18 @@ def build_recall_insight_prompt(ticker, facts, question=None):
             "What catalysts drove changes? Is the current sentiment consistent or diverging from recent history?"
         )
 
-    return f"""You are a market sentiment analyst reviewing historical sentiment data for ${ticker}.
+    return f"""<role>You are a market sentiment analyst specializing in historical trend analysis.</role>
 
-# SENTIMENT HISTORY (chronological)
+<task>{task}</task>
+
+<rules>
+- Focus on CHANGES over time — not just the latest reading
+- Identify phase transitions: bullish->bearish, low confidence->high confidence, etc.
+- Call out specific dates and catalysts when sentiment shifted
+- Note if themes are evolving, recurring, or contradicting each other
+- Be concise and actionable — a trader should read this in 30 seconds
+</rules>
+
+<data ticker="${ticker}">
 {facts_block}
-
-# TASK
-{task}
-
-# RULES
-1. Focus on CHANGES over time — not just the latest reading
-2. Identify phase transitions: bullish->bearish, low confidence->high confidence, etc.
-3. Call out specific dates and catalysts when sentiment shifted
-4. Note if themes are evolving, recurring, or contradicting each other
-5. Be concise and actionable — a trader should read this in 30 seconds
-
-# OUTPUT FORMAT
-Return ONLY valid JSON. No text before or after.
-
-{{
-  "current_phase": "bullish or bearish or neutral or transitioning",
-  "confidence_trend": "rising or falling or stable",
-  "phase_changes": [
-    {{"date": "YYYY-MM-DD", "from": "bearish", "to": "bullish", "catalyst": "brief reason"}}
-  ],
-  "key_insight": "1-2 sentence summary of the most important pattern",
-  "outlook": "what the trajectory suggests going forward",
-  "data_points": 5
-}}"""
+</data>"""

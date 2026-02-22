@@ -119,106 +119,274 @@ def load_screenshot_b64(filename, date_archive=None):
         return base64.b64encode(f.read()).decode("ascii")
 
 
-def call_bedrock(messages_content, max_tokens=20000):
+def call_bedrock_structured(content, schema, max_tokens=4000):
     """
-    Call Bedrock Claude with content blocks (text or text+images).
-    messages_content: either a string (text-only) or a list of content blocks (multimodal).
+    Call Bedrock Claude with native structured output (json_schema).
+    content: string or list of content blocks (multimodal).
+    schema: JSON Schema dict defining the output structure.
+    Returns the parsed dict matching the schema.
     """
     client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
-
-    if isinstance(messages_content, str):
-        content = messages_content
-    else:
-        content = messages_content
-
-    response = client.invoke_model(
-        modelId=BEDROCK_MODEL_ID,
-        body=json.dumps(
-            {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": content}],
-            }
-        ),
-    )
-
-    body = json.loads(response["body"].read())
-    text = body["content"][0]["text"]
-    tokens_in = body.get("usage", {}).get("input_tokens", "?")
-    tokens_out = body.get("usage", {}).get("output_tokens", "?")
-    logger.info(f"Bedrock [{BEDROCK_MODEL_ID}] {tokens_in} in → {tokens_out} out")
-    return text
-
-
-def parse_response(response_text):
-    """Parse JSON response from Bedrock"""
-    json_start = response_text.find("{")
-    json_end = response_text.rfind("}") + 1
-    if json_start == -1 or json_end <= json_start:
-        raise ValueError("No valid JSON found in response")
-    return json.loads(response_text[json_start:json_end])
-
-
-def research_query(query):
-    """Use Bedrock LLM with tool_use to convert a query into structured tickers + keywords."""
-    client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
-
-    tool_schema = {
-        "name": "research_result",
-        "description": "Return the tickers, keywords, and reasoning for a research query",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "tickers": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "1-5 stock ticker symbols, most relevant first (e.g. HOOD, NVDA)",
-                },
-                "keywords": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Search keywords for X/Twitter (cashtags added automatically)",
-                },
-                "reasoning": {
-                    "type": "string",
-                    "description": "Brief explanation of why these tickers/keywords were chosen",
-                },
-            },
-            "required": ["tickers", "keywords", "reasoning"],
-        },
-    }
-
-    prompt = build_research_query_prompt(query)
 
     response = client.invoke_model(
         modelId=BEDROCK_MODEL_ID,
         body=json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 500,
-            "messages": [{"role": "user", "content": prompt}],
-            "tools": [tool_schema],
-            "tool_choice": {"type": "tool", "name": "research_result"},
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": content}],
+            "output_config": {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema,
+                }
+            },
         }),
     )
 
     body = json.loads(response["body"].read())
     tokens_in = body.get("usage", {}).get("input_tokens", "?")
     tokens_out = body.get("usage", {}).get("output_tokens", "?")
-    logger.info(f"Bedrock [{BEDROCK_MODEL_ID}] tool_use  {tokens_in} in → {tokens_out} out")
+    logger.info(f"Bedrock [{BEDROCK_MODEL_ID}] structured  {tokens_in} in → {tokens_out} out")
 
-    # Extract tool_use block — guaranteed structured JSON
     for block in body.get("content", []):
-        if block.get("type") == "tool_use":
-            return block["input"]
+        if block.get("type") == "text":
+            return json.loads(block["text"])
 
-    raise ValueError("No tool_use block in response")
+    raise ValueError("No text block in response")
+
+
+SENTIMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "sentiment": {
+            "type": "string",
+            "enum": ["bullish", "bearish", "neutral", "mixed"],
+            "description": "Overall sentiment direction based on the posts analyzed",
+        },
+        "confidence": {
+            "type": "integer",
+            "description": "0-100 confidence score. Higher when posts agree and come from credible sources. Lower when mixed or insufficient data.",
+        },
+        "reasoning": {
+            "type": "string",
+            "description": "Step-by-step explanation: walk through the key posts, what the bulls say, what the bears say, and what tipped the balance. Cite @handles, price levels, and specific data points.",
+        },
+        "themes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Key themes identified across the posts (e.g. 'earnings beat', 'short squeeze', 'FDA approval')",
+        },
+        "catalysts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Upcoming events or triggers that could move the stock (e.g. 'earnings on Feb 28', 'Fed meeting next week')",
+        },
+        "key_levels": {
+            "type": "string",
+            "description": "Important price levels, support/resistance, or targets mentioned (e.g. '$130 support, $180 target'). Empty string if none.",
+        },
+        "notable_accounts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Twitter handles of credible accounts whose opinions carried weight in the analysis",
+        },
+        "summary": {
+            "type": "string",
+            "description": "4-5 sentence summary: what is the social media consensus, what are the strongest bull and bear arguments, and what should a trader watch for next",
+        },
+        "visual_insights": {
+            "type": "string",
+            "description": "Insights extracted from charts, option flow tables, or other images in screenshots. Empty string if no screenshots.",
+        },
+        "noise_filtered": {
+            "type": "integer",
+            "description": "Number of posts filtered out as noise (ads, spam, jokes, no real opinion)",
+        },
+        "signal_posts": {
+            "type": "integer",
+            "description": "Number of posts with real market signal used in the analysis",
+        },
+    },
+    "required": ["sentiment", "confidence", "reasoning", "themes", "summary", "noise_filtered", "signal_posts"],
+    "additionalProperties": False,
+}
+
+MARKET_SENTIMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "sentiment": {
+            "type": "string",
+            "enum": ["bullish", "bearish", "neutral", "mixed"],
+            "description": "Overall market sentiment direction",
+        },
+        "confidence": {
+            "type": "integer",
+            "description": "0-100 confidence score for the market sentiment reading",
+        },
+        "reasoning": {
+            "type": "string",
+            "description": "Step-by-step explanation: what is the overall mood, what data supports it, where are the disagreements. Cite specific @handles and claims.",
+        },
+        "themes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Key market themes (e.g. 'AI rally', 'rate cut hopes', 'earnings season')",
+        },
+        "notable_accounts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Credible accounts whose views shaped the analysis",
+        },
+        "summary": {
+            "type": "string",
+            "description": "4-5 sentences on overall market mood, risk appetite, and what traders should watch for next",
+        },
+        "risk_appetite": {
+            "type": "string",
+            "enum": ["risk-on", "risk-off", "neutral"],
+            "description": "Overall risk appetite: risk-on (buying dips, chasing momentum), risk-off (hedging, rotating to safety), or neutral",
+        },
+        "sector_rotation": {
+            "type": "string",
+            "description": "Notable sector rotation themes (e.g. 'rotation from tech to energy'). Empty string if none observed.",
+        },
+        "macro_concerns": {
+            "type": "string",
+            "description": "Macro concerns mentioned: rates, inflation, geopolitics, employment data. Empty string if none.",
+        },
+        "noise_filtered": {
+            "type": "integer",
+            "description": "Number of noise posts filtered out",
+        },
+        "signal_posts": {
+            "type": "integer",
+            "description": "Number of signal posts used in analysis",
+        },
+    },
+    "required": ["sentiment", "confidence", "reasoning", "themes", "summary", "risk_appetite", "noise_filtered", "signal_posts"],
+    "additionalProperties": False,
+}
+
+TICKER_INFERENCE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "inferences": {
+            "type": "array",
+            "description": "One entry per input post, in the same order",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "description": "0-based index of the post from the input list",
+                    },
+                    "tickers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Identified ticker symbols (e.g. ['NVDA', 'AMD']). Empty array if the post should be skipped.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of why these tickers were assigned, or why the post was skipped",
+                    },
+                },
+                "required": ["index", "tickers", "reason"],
+            },
+        },
+    },
+    "required": ["inferences"],
+    "additionalProperties": False,
+}
+
+RESEARCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tickers": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "1-5 stock ticker symbols, most relevant first (e.g. ['HOOD'] for 'robinhood stock')",
+        },
+        "keywords": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Search keywords for X/Twitter. Cashtags like $HOOD are added automatically, so use plain terms (e.g. ['robinhood', 'HOOD earnings'])",
+        },
+        "reasoning": {
+            "type": "string",
+            "description": "Brief explanation of why these tickers and keywords were chosen",
+        },
+    },
+    "required": ["tickers", "keywords", "reasoning"],
+    "additionalProperties": False,
+}
+
+RECALL_INSIGHT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "current_phase": {
+            "type": "string",
+            "enum": ["bullish", "bearish", "neutral", "transitioning"],
+            "description": "Current sentiment phase based on the most recent data points",
+        },
+        "confidence_trend": {
+            "type": "string",
+            "enum": ["rising", "falling", "stable"],
+            "description": "Direction of confidence scores over time",
+        },
+        "phase_changes": {
+            "type": "array",
+            "description": "List of sentiment phase transitions detected in the history",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "Date of the phase change (YYYY-MM-DD)",
+                    },
+                    "from": {
+                        "type": "string",
+                        "description": "Previous sentiment phase (e.g. 'bearish')",
+                    },
+                    "to": {
+                        "type": "string",
+                        "description": "New sentiment phase (e.g. 'bullish')",
+                    },
+                    "catalyst": {
+                        "type": "string",
+                        "description": "What caused the shift (e.g. 'earnings beat expectations')",
+                    },
+                },
+                "required": ["date", "from", "to", "catalyst"],
+            },
+        },
+        "key_insight": {
+            "type": "string",
+            "description": "1-2 sentence summary of the single most important pattern in the data",
+        },
+        "outlook": {
+            "type": "string",
+            "description": "What the sentiment trajectory suggests going forward for traders",
+        },
+        "data_points": {
+            "type": "integer",
+            "description": "Number of historical sentiment data points analyzed",
+        },
+    },
+    "required": ["current_phase", "confidence_trend", "phase_changes", "key_insight", "outlook", "data_points"],
+    "additionalProperties": False,
+}
+
+
+def research_query(query):
+    """Use Bedrock structured output to convert a query into tickers + keywords."""
+    prompt = build_research_query_prompt(query)
+    return call_bedrock_structured(prompt, RESEARCH_SCHEMA, max_tokens=500)
 
 
 def recall_insight(ticker, facts, question=None):
     """Run LLM analysis over recalled sentiment memories to identify phase changes."""
     prompt = build_recall_insight_prompt(ticker, facts, question)
-    response = call_bedrock(prompt, max_tokens=1000)
-    return parse_response(response)
+    return call_bedrock_structured(prompt, RECALL_INSIGHT_SCHEMA, max_tokens=1000)
 
 
 def infer_tickers(untagged_posts, dry_run=False):
@@ -237,23 +405,14 @@ def infer_tickers(untagged_posts, dry_run=False):
 
     try:
         prompt = build_ticker_inference_prompt(untagged_posts)
-        response_text = call_bedrock(prompt, max_tokens=2000)
+        result = call_bedrock_structured(prompt, TICKER_INFERENCE_SCHEMA, max_tokens=2000)
 
-        # Parse JSON array
-        json_start = response_text.find("[")
-        json_end = response_text.rfind("]") + 1
-        if json_start == -1 or json_end <= json_start:
-            raise ValueError("No valid JSON array found")
-
-        inferences = json.loads(response_text[json_start:json_end])
         results = []
-
-        for inf in inferences:
+        for inf in result.get("inferences", []):
             idx = inf.get("index", -1)
             tickers = inf.get("tickers", [])
             if 0 <= idx < len(untagged_posts) and tickers:
                 post = untagged_posts[idx]
-                # Filter out SKIP entries
                 real_tickers = [t for t in tickers if t != "SKIP"]
                 if real_tickers:
                     results.append((post, real_tickers))
@@ -283,8 +442,7 @@ def analyze_market(all_posts, dry_run=False):
 
     try:
         prompt = build_market_sentiment_prompt(all_posts)
-        response_text = call_bedrock(prompt, max_tokens=1500)
-        result = parse_response(response_text)
+        result = call_bedrock_structured(prompt, MARKET_SENTIMENT_SCHEMA, max_tokens=1500)
         result["post_count"] = len(all_posts)
         result["analyzed_at"] = datetime.now().isoformat()
         logger.info(
@@ -320,8 +478,7 @@ def analyze_ticker(ticker, posts, dry_run=False):
         else:
             content = build_sentiment_prompt(ticker, posts)
 
-        response_text = call_bedrock(content)
-        result = parse_response(response_text)
+        result = call_bedrock_structured(content, SENTIMENT_SCHEMA)
         result["ticker"] = ticker
         result["post_count"] = len(posts)
         result["screenshots_analyzed"] = len(screenshots)
