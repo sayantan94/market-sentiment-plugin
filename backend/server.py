@@ -9,7 +9,7 @@ import base64
 import hashlib
 import json
 import os
-from fastapi import FastAPI, Query, Request
+from fastapi import Body, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
@@ -135,7 +135,7 @@ def clear_posts():
 # --- Scan relay ---
 
 @app.post("/scan")
-def create_scan(request_body: dict):
+def create_scan(request_body: dict = Body(...)):
     from datetime import datetime
     scan = {
         "tickers": request_body.get("tickers", []),
@@ -159,7 +159,7 @@ def get_scan():
 
 
 @app.patch("/scan")
-def patch_scan(request_body: dict):
+def patch_scan(request_body: dict = Body(...)):
     scan = _read_scan()
     if not scan:
         return {"status": "none"}

@@ -347,40 +347,32 @@ chrome.runtime.onMessage.addListener((msg) => {
 // On load: resume scan if one was active (e.g. page re-inject after navigation)
 chrome.storage.local.get("mspScan", (result) => {
   if (result.mspScan && result.mspScan.active) {
-    startScan(result.mspScan.ticker, result.mspScan.maxPosts);
+    startScan(result.mspScan.currentTicker, result.mspScan.perTab);
   }
 });
 
-// --- SSE listener: pick up scans queued by CLI ---
-(function initSSEListener() {
-  let sse;
-  try {
-    sse = new EventSource(`${API_URL}/scan/stream`);
-  } catch {
-    return;
+// --- Poll for CLI-queued scans ---
+(function pollForScans() {
+  const POLL_INTERVAL = 3000;
+
+  async function checkScan() {
+    if (scanning) return; // already scanning, skip
+    try {
+      const resp = await fetch(`${API_URL}/scan`);
+      if (!resp.ok) return;
+      const scan = await resp.json();
+      if (scan.status === "pending") {
+        patchScan({ status: "running" });
+        const tickers = scan.tickers || [];
+        const maxPosts = scan.maxPosts || 50;
+        chrome.runtime.sendMessage({ type: "start_scan", tickers, maxPosts });
+      }
+    } catch {
+      // backend offline, ignore
+    }
   }
 
-  sse.onmessage = (event) => {
-    let scan;
-    try {
-      scan = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-
-    if (scan.status === "pending" && !scanning) {
-      // Extension picks up the pending scan
-      patchScan({ status: "running" });
-      const tickers = scan.tickers || [];
-      const maxPosts = scan.maxPosts || 50;
-      chrome.runtime.sendMessage({ type: "start_scan", tickers, maxPosts });
-      sse.close();
-    } else if (scan.status === "done" || scan.status === "error" || scan.status === "none") {
-      sse.close();
-    }
-  };
-
-  sse.onerror = () => {
-    sse.close();
-  };
+  // Check immediately on page load, then every 3s
+  checkScan();
+  setInterval(checkScan, POLL_INTERVAL);
 })();

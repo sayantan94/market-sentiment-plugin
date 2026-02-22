@@ -11,6 +11,7 @@ setup(
         "uvicorn>=0.32.0",
         "pydantic>=2.0.0",
         "boto3>=1.35.0",
+        "sse-starlette>=2.0.0"
     ],
     entry_points={
         "console_scripts": [
