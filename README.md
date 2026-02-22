@@ -63,41 +63,31 @@ msp-cli doctor
 
 
 
-## Workflow 1: CLI Research
+## Workflow 1: Research Mode 
 
-Run `msp-cli research` with any question about the market. The CLI sends your query to Claude, which figures out which tickers to search for. It then tells the Chrome extension to scan X for those tickers, collects the posts, runs sentiment analysis, and stores everything in memory.
+Run `msp-cli research` with any question about the market. The CLI sends your query to LLM, which figures out which tickers to scan. The extension then auto-scans X for those tickers, shows live progress in the popup (`Auto-Scan Tickers`, `Scan Queue`) and in a blue banner on top of X, then the CLI runs sentiment analysis and stores results in memory.
 
 ```bash
-msp-cli research "find me what does market feel about top ai companies"
+msp-cli research "tell me what the market thinks about meta"
 ```
 ```
 $ Market Sentiment · Research
 
-  Tickers:   $NVDA $MSFT $GOOGL $META $TSLA
-  Keywords:  AI stocks, artificial intelligence, AI sentiment, AI companies, tech AI
-  Reason:    Query asks about market sentiment on top AI companies. Selected the 5
-             most prominent AI-focused stocks: NVDA, MSFT, GOOGL, META, TSLA.
+  Tickers:   $META
+  Keywords:  meta stock, meta sentiment, zuckerberg, instagram, reality labs
+  Reason:    Query is specifically about Meta market sentiment, so the scan focuses
+             on META-related posts.
 
   Scan queued, waiting for extension...
-  Scanning $NVDA   9 posts
-  Scanning $MSFT   14 posts
-  ...
-  Done! 109 posts captured.
+  Scanning $META   39 posts
+  Done! 39 posts captured.
 
   ──────────────── Analyze ────────────────
-  $NVDA: bullish 78% (6.2s)
-  $MSFT: neutral 55% (4.8s)
-  ...
-  5 analyzed, stored in memory
+  $META: bullish 71% (5.1s)
+  1 analyzed, stored in memory
 ```
 
-The extension popup shows the scan queue and live progress:
-
-<p>
-  <img src="docs/research.PNG" alt="Extension popup showing scan queue during research" width="300"/>
-  <br/>
-  <em>The extension auto-populates tickers from the CLI research command and scans them one by one</em>
-</p>
+![Fast-forward research mode demo](docs/share/research-mode-fast10-cropped.gif)
 
 Use `--skip-analyze` to skip the auto-analysis step:
 
@@ -330,4 +320,3 @@ sequenceDiagram
     CLI->>Mem: List events across 30 days
     Mem-->>CLI: Sentiment timeline
 ```
-
