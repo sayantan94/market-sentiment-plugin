@@ -291,6 +291,7 @@ TICKER_INFERENCE_SCHEMA = {
                     },
                 },
                 "required": ["index", "tickers", "reason"],
+                "additionalProperties": False,
             },
         },
     },
@@ -357,6 +358,7 @@ RECALL_INSIGHT_SCHEMA = {
                     },
                 },
                 "required": ["date", "from", "to", "catalyst"],
+                "additionalProperties": False,
             },
         },
         "key_insight": {
