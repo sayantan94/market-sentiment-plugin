@@ -213,7 +213,7 @@ def _run_analyze(ticker_filter=None, dry_run=False):
     """Core analyze logic. Returns True if results were produced."""
     from analysis.analyze import (
         load_posts, group_by_ticker, analyze_ticker,
-        infer_tickers, analyze_market, archive_posts,
+        infer_tickers, analyze_market, archive_posts, save_analysis,
     )
     from analysis.memory import store_sentiment, store_market_sentiment
     from config.settings import POSTS_FILE
@@ -367,7 +367,8 @@ def _run_analyze(ticker_filter=None, dry_run=False):
                 padding=(0, 1),
             ))
 
-        # Archive
+        save_analysis(results)
+
         archive_posts(posts)
         with open(POSTS_FILE, "w") as f:
             json.dump([], f)
