@@ -26,7 +26,7 @@ from analysis.prompts import (
     build_research_query_prompt,
     build_recall_insight_prompt,
 )
-from config.settings import AWS_REGION, BEDROCK_MODEL_ID, POSTS_FILE, SEEN_FILE, SCREENSHOTS_DIR, DATA_DIR
+from config.settings import AWS_REGION, BEDROCK_MODEL_ID, POSTS_FILE, SEEN_FILE, SCREENSHOTS_DIR, DATA_DIR, ANALYSIS_FILE
 
 logging.basicConfig(
     level=logging.INFO,
@@ -500,6 +500,32 @@ def analyze_ticker(ticker, posts, dry_run=False):
         return {"ticker": ticker, "status": "error", "error": str(e)}
 
 
+def save_analysis(results):
+    """Persist analysis results to data/analysis.json keyed by ticker.
+    Merges with existing results so previous tickers are preserved
+    until overwritten by a new analysis run."""
+    existing = {}
+    if os.path.exists(ANALYSIS_FILE):
+        try:
+            with open(ANALYSIS_FILE, "r") as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            existing = {}
+
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).isoformat()
+
+    for r in results:
+        ticker = r.get("ticker", "UNKNOWN")
+        r["analyzed_at"] = ts
+        existing[ticker] = r
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(ANALYSIS_FILE, "w") as f:
+        json.dump(existing, f, indent=2)
+    logger.info(f"Saved analysis for {len(results)} ticker(s) to {ANALYSIS_FILE}")
+
+
 def main():
     from analysis.memory import store_sentiment, store_market_sentiment
 
@@ -568,6 +594,10 @@ def main():
                 all_times = [p.get("timestamp") or p.get("saved_at") for p in posts]
                 store_market_sentiment(market_result, post_times=all_times)
             results.append({**market_result, "ticker": "MARKET"})
+
+    # Save analysis results locally for the extension to display
+    if results and not args.dry_run:
+        save_analysis(results)
 
     # Archive processed posts and clear active file
     if results and not args.dry_run:

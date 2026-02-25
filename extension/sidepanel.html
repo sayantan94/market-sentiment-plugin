@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="panel-header">
+    <div class="panel-title">Market Sentiment</div>
+    <div class="health-indicator" id="health-indicator">
+      <div class="health-dot" id="health-dot"></div>
+      <span id="health-text">...</span>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn" data-tab="feed">Feed</button>
+    <button class="tab-btn" data-tab="controls">Controls</button>
+  </div>
+
+  <!-- Dashboard Tab -->
+  <div class="tab-content active" id="tab-dashboard">
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <span class="stat-tile-value" id="stat-posts">—</span>
+        <span class="stat-tile-label">Saved Posts</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-tile-value" id="stat-tickers">—</span>
+        <span class="stat-tile-label">Tickers</span>
+      </div>
+      <div class="stat-tile scan-tile">
+        <span class="stat-tile-value" id="stat-scan">Idle</span>
+        <span class="stat-tile-label">Scan</span>
+      </div>
+    </div>
+
+    <div class="quick-actions">
+      <button class="action-btn primary" id="quick-scan-btn">Quick Scan</button>
+      <button class="action-btn ghost" id="clear-btn">Clear All</button>
+    </div>
+  </div>
+
+  <!-- Feed Tab — Analysis Results -->
+  <div class="tab-content" id="tab-feed">
+    <div class="feed-search">
+      <svg class="feed-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="feed-search" placeholder="Filter by ticker...">
+    </div>
+    <div id="analysis-cards"></div>
+    <div class="feed-footer" id="feed-footer"></div>
+  </div>
+
+  <!-- Controls Tab -->
+  <div class="tab-content" id="tab-controls">
+    <div class="control-section">
+      <label class="control-label" for="scan-input">Tickers</label>
+      <div class="control-input-wrap">
+        <input type="text" class="control-input" id="scan-input" placeholder="HOOD, SPY, ORCL" maxlength="50">
+      </div>
+      <label class="control-label" for="scan-max">Max Posts</label>
+      <div class="control-input-wrap">
+        <input type="number" class="control-input" id="scan-max" min="5" max="200" value="50" step="5">
+      </div>
+      <button class="scan-start-btn" id="scan-btn">&#9654; Start Scan</button>
+    </div>
+
+    <div class="control-section">
+      <div class="section-label">Queue</div>
+      <div class="queue-card" id="queue-card"></div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

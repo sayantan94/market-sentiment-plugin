@@ -13,3 +13,4 @@ data/server.log
 dist/
 build/
 *.mov
+*.mp4

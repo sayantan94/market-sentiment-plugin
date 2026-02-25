@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from backend.models import PostIn, Post
-from config.settings import POSTS_FILE, SCAN_FILE, SEEN_FILE, DATA_DIR, SCREENSHOTS_DIR, BACKEND_PORT
+from config.settings import POSTS_FILE, SCAN_FILE, SEEN_FILE, ANALYSIS_FILE, DATA_DIR, SCREENSHOTS_DIR, BACKEND_PORT
 
 app = FastAPI(title="Market Sentiment Collector")
 
@@ -130,6 +130,24 @@ def get_posts(ticker: str = Query(None)):
 def clear_posts():
     _write_posts([])
     return {"cleared": True}
+
+
+@app.get("/analysis")
+def get_analysis(ticker: str = Query(None)):
+    """Return saved analysis results. Optional ticker filter."""
+    if not os.path.exists(ANALYSIS_FILE):
+        return {"analysis": {}, "count": 0}
+    try:
+        with open(ANALYSIS_FILE, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {"analysis": {}, "count": 0}
+    if ticker:
+        ticker_upper = ticker.upper()
+        if ticker_upper in data:
+            return {"analysis": {ticker_upper: data[ticker_upper]}, "count": 1}
+        return {"analysis": {}, "count": 0}
+    return {"analysis": data, "count": len(data)}
 
 
 # --- Scan relay ---

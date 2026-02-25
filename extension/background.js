@@ -7,6 +7,9 @@
 let savedCount = 0;
 let scanPollTimer = null;
 
+// Open side panel when extension icon is clicked
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+
 // Poll backend for pending scans every 2 seconds
 function startScanPolling() {
   if (scanPollTimer) return;

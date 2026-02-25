@@ -12,22 +12,22 @@
   cursor: pointer;
   font-size: 15px;
   font-weight: 700;
-  color: rgb(113, 118, 123);
+  color: #71767b;
   transition: color 0.2s, background-color 0.2s;
   margin-left: 4px;
 }
 
 .msp-save-btn:hover {
-  color: rgb(29, 155, 240);
+  color: #1d9bf0;
   background-color: rgba(29, 155, 240, 0.1);
 }
 
 .msp-save-btn.msp-saved {
-  color: rgb(0, 186, 124);
+  color: #00ba7c;
 }
 
 .msp-save-btn.msp-error {
-  color: rgb(244, 33, 46);
+  color: #f4212e;
 }
 
 .msp-save-btn.msp-saving {

@@ -303,9 +303,6 @@ async function scanLoop() {
 function startScan(ticker, maxPosts, resumeCount) {
   if (scanning) return;
 
-function startScan(ticker, maxPosts, resumeCount) {
-  if (scanning) return;
-
   // Fallback: extract ticker from X search URL if not provided
   if (!ticker) {
     const urlMatch = decodeURIComponent(window.location.search).match(/q=\$([A-Z]{1,5})\b/i);
